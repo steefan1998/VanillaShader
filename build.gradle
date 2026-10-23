@@ -92,3 +92,30 @@ dependencies {
     sodiumMod("maven.modrinth:sodium:${sodium_version}")
     compileOnly(files(extractSodiumApi).asFileTree.matching { include("*.jar") })
 }
+
+// Compiles every shader with glslang (the Khronos reference compiler) so that driver-specific GLSL errors - the kind
+// AMD accepts but NVIDIA rejects - break the build instead of the game. Run: ./gradlew validateShaders
+sourceSets {
+    shaderCheck
+}
+
+dependencies {
+    shaderCheckImplementation(platform('org.lwjgl:lwjgl-bom:3.4.1'))
+    shaderCheckImplementation('org.lwjgl:lwjgl')
+    shaderCheckImplementation('org.lwjgl:lwjgl-shaderc')
+    shaderCheckRuntimeOnly('org.lwjgl:lwjgl::natives-windows')
+    shaderCheckRuntimeOnly('org.lwjgl:lwjgl-shaderc::natives-windows')
+    shaderCheckRuntimeOnly('org.lwjgl:lwjgl::natives-linux')
+    shaderCheckRuntimeOnly('org.lwjgl:lwjgl-shaderc::natives-linux')
+}
+
+var validateShaders = tasks.register('validateShaders', JavaExec) {
+    group = 'verification'
+    description = 'Compiles all post shaders with glslang to catch errors strict drivers would report.'
+    classpath = sourceSets.shaderCheck.runtimeClasspath
+    mainClass = 'nl.chaos.vanillashader.shadercheck.ValidateShaders'
+    args(file('src/main/resources/assets/vanillashader/shaders').absolutePath)
+}
+tasks.named('check') {
+    dependsOn(validateShaders)
+}

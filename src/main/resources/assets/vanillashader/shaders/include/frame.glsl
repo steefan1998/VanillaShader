@@ -52,8 +52,8 @@ vec2 packDistance(float dist) {
     return vec2(floor(v / 256.0), mod(v, 256.0)) / 255.0;
 }
 
-float unpackDistance(vec2 packed) {
-    vec2 bytes = floor(packed * 255.0 + 0.5);
+float unpackDistance(vec2 encoded) {
+    vec2 bytes = floor(encoded * 255.0 + 0.5);
     return (bytes.x * 256.0 + bytes.y) / 65535.0 * 1024.0;
 }
 
