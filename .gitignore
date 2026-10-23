@@ -1,0 +1,14 @@
+# Gradle and build output
+.gradle/
+build/
+out/
+
+# Dev runs: test worlds, logs, screenshots and third-party mod jars (Sodium, WeatherStory) - never commit these
+run/
+runs/
+*.log
+
+# IDEs
+.idea/
+*.iml
+.vscode/

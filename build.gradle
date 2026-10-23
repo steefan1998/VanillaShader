@@ -1,0 +1,94 @@
+plugins {
+    id('java-library')
+    id('idea')
+    id('net.neoforged.moddev').version('2.0.141')
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(java_version)
+
+neoForge {
+    version = neo_version
+
+    runs {
+        client {
+            client()
+            systemProperty('neoforge.enabledGameTestNamespaces', mod_id)
+            if (project.hasProperty('devCapture')) {
+                // ./gradlew runClient -PdevCapture : loads run/saves/world and screenshots every profile
+                systemProperty('vanillashader.devCapture', 'true')
+                systemProperty('vanillashader.devCapture.commands', project.property('devCapture').toString())
+                programArguments.addAll('--quickPlaySingleplayer', 'world')
+                // -Pjvm.some.property=value becomes -Dsome.property=value, e.g. to force WeatherStory's cloud preview
+                project.properties.findAll { it.key.startsWith('jvm.') }.each { systemProperty(it.key.substring(4), it.value.toString()) }
+            }
+        }
+        server {
+            server()
+            programArgument('--nogui')
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// The Sodium release jar nests the real mod jar under META-INF/jarjar; unpack it so its API is on the compile classpath.
+var extractSodiumApi = tasks.register("extractSodiumApi", Sync) {
+    from({ zipTree(configurations.sodiumMod.singleFile) }) {
+        include("META-INF/jarjar/*.jar")
+        eachFile { path = name }
+    }
+    includeEmptyDirs = false
+    into(layout.buildDirectory.dir("sodium-api"))
+}
+
+repositories {
+    exclusiveContent {
+        forRepository { maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup('maven.modrinth') }
+    }
+}
+
+configurations {
+    sodiumMod
+}
+
+dependencies {
+    // Sodium is optional: we only compile against its config API, it is never required at runtime.
+    sodiumMod("maven.modrinth:sodium:${sodium_version}")
+    compileOnly(files(extractSodiumApi).asFileTree.matching { include("*.jar") })
+}
