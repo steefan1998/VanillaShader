@@ -4,6 +4,22 @@ A NeoForge mod for Minecraft **26.1.2** that gives the game a vibrant, shader-li
 with **Sodium** and **WeatherStory**. Everything is post-processing on top of the normal renderer, so no shader pack
 loader is needed.
 
+![Sunset over a forest with Vanilla Shader on Max](docs/screenshots/sunset.jpg)
+
+## Screenshots
+
+All shots use the Max profile together with Sodium and WeatherStory; "vanilla" is the same view with the mod off.
+
+| Vanilla | Vanilla Shader (Max) |
+|---|---|
+| ![Sunset, vanilla](docs/screenshots/sunset-vanilla.jpg) | ![Sunset with god rays, haze and bloom](docs/screenshots/sunset.jpg) |
+| ![Lake, vanilla](docs/screenshots/lake-vanilla.jpg) | ![Lake with reflections and tree shadows](docs/screenshots/lake.jpg) |
+| ![Night, vanilla](docs/screenshots/night-lights-vanilla.jpg) | ![Night with coloured light from glowstone and lanterns](docs/screenshots/night-lights.jpg) |
+
+| Forest with sun shadows and ice | WeatherStory mist |
+|---|---|
+| ![Forest with sun shadows](docs/screenshots/forest.jpg) | ![Soft mist from WeatherStory](docs/screenshots/fog.jpg) |
+
 ## Features
 
 - **Graphics profiles:** Off, Low, Medium, High, Max and Custom. Press **F6** to cycle them in game.

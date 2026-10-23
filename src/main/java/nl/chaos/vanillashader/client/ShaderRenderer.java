@@ -57,6 +57,7 @@ public final class ShaderRenderer {
     private static final RenderPipeline LIGHTING = pipeline("lighting", "Depth", "ShadowMap", "CloudShadow");
     private static final RenderPipeline POINT_LIGHTS = pipeline("point_lights", "Depth", "ShadowMap");
     private static final RenderPipeline WATER = pipeline("water", "Scene", "Depth", "OpaqueDepth", "ShadowMap");
+    private static final RenderPipeline DENOISE = pipeline("denoise", "In", "Guide");
     private static final RenderPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap");
     private static final RenderPipeline BRIGHT = pipeline("bloom_bright", "In");
     private static final RenderPipeline BLUR = pipeline("blur", "In");
@@ -69,6 +70,9 @@ public final class ShaderRenderer {
     private static final Texture LIGHTING_TEX = new Texture("lighting", 2);
     private static final Texture POINT_LIGHTS_TEX = new Texture("point_lights", 2);
     private static final Texture WATER_TEX = new Texture("water", 2);
+    private static final Texture LIGHTING_TMP = new Texture("lighting_tmp", 2);
+    private static final Texture POINT_LIGHTS_TMP = new Texture("point_lights_tmp", 2);
+    private static final Texture RAYS_TMP = new Texture("rays_tmp", 2);
     private static final Texture RAYS = new Texture("rays", 2);
     private static final Texture BLOOM_NEAR = new Texture("bloom_near", 4);
     private static final Texture BLOOM_NEAR_TMP = new Texture("bloom_near_tmp", 4);
@@ -80,7 +84,7 @@ public final class ShaderRenderer {
     // and sand wisps (drawn without depth), so lighting can be kept off the veil in front of the terrain.
     private static final Texture OPAQUE_COLOR = new Texture("opaque_color", 1);
     private static final Texture FEATURE_COLOR = new Texture("feature_color", 1);
-    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
+    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
     private static final DepthCopy OPAQUE_DEPTH = new DepthCopy("opaque_depth");
     private static final DepthCopy FULL_DEPTH = new DepthCopy("full_depth");
 
@@ -89,6 +93,9 @@ public final class ShaderRenderer {
     private static @Nullable MappableRingBuffer frameUniforms;
     private static @Nullable GpuBuffer blurHorizontal;
     private static @Nullable GpuBuffer blurVertical;
+    // Denoise directions that leave the packed distances in BA untouched (the plain blur ones blur all channels).
+    private static @Nullable GpuBuffer denoiseHorizontalKeep;
+    private static @Nullable GpuBuffer denoiseVerticalKeep;
     private static @Nullable GpuBuffer fsrConfig;
     private static int fsrSharpness = -1;
     private static @Nullable LevelTargetBundle targets;
@@ -140,6 +147,7 @@ public final class ShaderRenderer {
         return switch (pipeline) {
             case "blur" -> "BlurConfig";
             case "fsr_rcas" -> "FsrConfig";
+            case "denoise" -> "DenoiseConfig";
             case "fsr_easu" -> null;
             default -> "Frame";
         };
@@ -265,10 +273,17 @@ public final class ShaderRenderer {
             // White: no occlusion, full sun, and the farthest distance so the upsample weighs all texels alike.
             encoder.clearColorTexture(LIGHTING_TEX.texture, 0xFFFFFFFF);
         }
+        boolean denoise = usable(DENOISE) && (effects.ambientOcclusion() > 0 || effects.shadows() > 0);
+        if (denoise && usable(LIGHTING)) {
+            denoise(encoder, LIGHTING_TEX, LIGHTING_TMP, LIGHTING_TEX, true);
+        }
         if (FRAME.anyPointLights() && usable(POINT_LIGHTS)) {
             draw(encoder, POINT_LIGHTS, POINT_LIGHTS_TEX.view, frame, null,
                 new Input("Depth", FULL_DEPTH.view, nearest),
                 new Input("ShadowMap", heights, nearest));
+            if (usable(DENOISE)) {
+                denoise(encoder, POINT_LIGHTS_TEX, POINT_LIGHTS_TMP, LIGHTING_TEX, false);
+            }
         } else {
             encoder.clearColorTexture(POINT_LIGHTS_TEX.texture, 0);
         }
@@ -317,6 +332,10 @@ public final class ShaderRenderer {
             draw(encoder, GOD_RAYS, RAYS.view, frame, null,
                 new Input("Scene", scene, linear),
                 new Input("Depth", FULL_DEPTH.view, nearest));
+            // The rays march with per-pixel jitter; a light blur hides the grain.
+            if (usable(BLUR)) {
+                blur(encoder, frame, RAYS, RAYS_TMP, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR), 1);
+            }
             rays = RAYS.view;
         }
 
@@ -393,6 +412,17 @@ public final class ShaderRenderer {
         return fsrConfig;
     }
 
+    // Depth-aware blur, horizontal into temp then vertical back; distances for the edge test come from the guide.
+    private static void denoise(CommandEncoder encoder, Texture target, Texture temp, Texture guide, boolean keepDistances) {
+        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+        GpuBuffer horizontal = keepDistances ? denoiseHorizontalKeep : blurHorizontal;
+        GpuBuffer vertical = keepDistances ? denoiseVerticalKeep : blurVertical;
+        // When the guide is the target itself, the temp copy carries the (unchanged) distances for the second pass.
+        Texture secondGuide = guide == target ? temp : guide;
+        drawWith(encoder, DENOISE, temp.view, "DenoiseConfig", horizontal, new Input("In", target.view, nearest), new Input("Guide", guide.view, nearest));
+        drawWith(encoder, DENOISE, target.view, "DenoiseConfig", vertical, new Input("In", temp.view, nearest), new Input("Guide", secondGuide.view, nearest));
+    }
+
     private static void blur(CommandEncoder encoder, GpuBuffer frame, Texture target, Texture temp, GpuSampler sampler, int iterations) {
         for (int i = 0; i < iterations; i++) {
             draw(encoder, BLUR, temp.view, frame, blurHorizontal, new Input("In", target.view, sampler));
@@ -433,15 +463,17 @@ public final class ShaderRenderer {
 
     private static void ensureBlurConfigs(GpuDevice device) {
         if (blurHorizontal == null) {
-            blurHorizontal = blurConfig(device, 1.0F, 0.0F);
-            blurVertical = blurConfig(device, 0.0F, 1.0F);
+            blurHorizontal = blurConfig(device, 1.0F, 0.0F, 0.0F);
+            blurVertical = blurConfig(device, 0.0F, 1.0F, 0.0F);
+            denoiseHorizontalKeep = blurConfig(device, 1.0F, 0.0F, 1.0F);
+            denoiseVerticalKeep = blurConfig(device, 0.0F, 1.0F, 1.0F);
         }
     }
 
-    private static GpuBuffer blurConfig(GpuDevice device, float x, float y) {
+    private static GpuBuffer blurConfig(GpuDevice device, float x, float y, float flag) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             Std140Builder builder = Std140Builder.onStack(stack, 16);
-            builder.putVec4(x, y, 0.0F, 0.0F);
+            builder.putVec4(x, y, flag, 0.0F);
             return device.createBuffer(() -> "Vanilla Shader blur", GpuBuffer.USAGE_UNIFORM, builder.get());
         }
     }
