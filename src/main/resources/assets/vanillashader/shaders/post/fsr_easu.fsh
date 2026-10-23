@@ -131,5 +131,7 @@ void main() {
     // Clamp to the 4 nearest texels to remove ringing.
     vec3 min4 = min(min(f, g), min(j, k));
     vec3 max4 = max(max(f, g), max(j, k));
-    fragColor = vec4(min(max4, max(min4, color / weight)), 1.0);
+    // The weights sum to well above zero in practice; guard anyway, a NaN here would be a black pixel.
+    vec3 resolved = abs(weight) > 1e-5 ? color / weight : f;
+    fragColor = vec4(min(max4, max(min4, resolved)), 1.0);
 }

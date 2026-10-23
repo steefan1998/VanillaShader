@@ -35,7 +35,7 @@ public final class RenderScaler {
         Minecraft minecraft = Minecraft.getInstance();
         ShaderConfig.Effects effects = ShaderConfig.effects();
         RenderScale scale = effects.renderScale();
-        if (scale == RenderScale.NATIVE || !ShaderRenderer.active()) {
+        if (scale == RenderScale.NATIVE || !ShaderRenderer.active() || !ShaderRenderer.fsrUsable()) {
             return;
         }
         RenderTarget main = minecraft.getMainRenderTarget();

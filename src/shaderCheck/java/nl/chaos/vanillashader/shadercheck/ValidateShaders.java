@@ -28,6 +28,20 @@ public final class ValidateShaders {
         "sample", "patch", "subroutine", "precise", "buffer", "shared", "coherent", "restrict", "readonly", "writeonly",
         "atomic_uint", "invariant", "attribute", "varying", "precision", "highp", "mediump", "lowp"
     );
+    // Built-in function names. The spec allows hiding them with a variable or parameter, but some Intel and older
+    // NVIDIA drivers then fail to compile the shader, so treat it as an error.
+    private static final Set<String> BUILTINS = Set.of(
+        "radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+        "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt", "abs", "sign", "floor", "trunc", "round", "roundEven",
+        "ceil", "fract", "mod", "modf", "min", "max", "clamp", "mix", "step", "smoothstep", "isnan", "isinf", "length",
+        "distance", "dot", "cross", "normalize", "faceforward", "reflect", "refract", "matrixCompMult", "outerProduct",
+        "transpose", "determinant", "inverse", "lessThan", "greaterThan", "equal", "notEqual", "any", "all", "not",
+        "texture", "textureSize", "texelFetch", "textureLod", "textureGrad", "textureOffset", "dFdx", "dFdy", "fwidth",
+        "noise1", "noise2", "noise3", "noise4"
+    );
+    private static final Pattern DECLARATION = Pattern.compile(
+        "\\b(?:float|int|uint|bool|[biu]?vec[234]|mat[234](?:x[234])?|sampler2D)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?:[=;,)\\[])"
+    );
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final Pattern COMMENTS = Pattern.compile("//[^\\n]*|/\\*.*?\\*/", Pattern.DOTALL);
     private static final Pattern IMPORT = Pattern.compile("#moj_import <([a-z0-9_]+):([a-z0-9_/.]+)>");
@@ -52,6 +66,12 @@ public final class ValidateShaders {
         int failures = 0;
         for (Path file : fragments) {
             String source = resolveImports(Files.readString(file), shaders);
+            String problems = styleProblems(Files.readString(file), source);
+            if (!problems.isEmpty()) {
+                failures++;
+                System.err.println("FAILED " + file.getFileName() + ": " + problems);
+                continue;
+            }
             String reserved = reservedWordsUsed(source);
             if (!reserved.isEmpty()) {
                 failures++;
@@ -73,6 +93,35 @@ public final class ValidateShaders {
         if (failures > 0) {
             throw new IllegalStateException(failures + " shader(s) failed to compile");
         }
+    }
+
+    private static String styleProblems(String original, String source) {
+        List<String> problems = new java.util.ArrayList<>();
+        if (!original.startsWith("#version 330")) {
+            problems.add("must start with #version 330");
+        }
+        String code = COMMENTS.matcher(source).replaceAll(" ");
+        Matcher declarations = DECLARATION.matcher(code);
+        Set<String> hiding = new TreeSet<>();
+        while (declarations.find()) {
+            if (BUILTINS.contains(declarations.group(1))) {
+                hiding.add(declarations.group(1));
+            }
+        }
+        if (!hiding.isEmpty()) {
+            problems.add("variables or parameters named like built-in functions: " + String.join(", ", hiding));
+        }
+        Matcher identifiers = IDENTIFIER.matcher(code);
+        Set<String> underscores = new TreeSet<>();
+        while (identifiers.find()) {
+            if (identifiers.group().contains("__")) {
+                underscores.add(identifiers.group());
+            }
+        }
+        if (!underscores.isEmpty()) {
+            problems.add("names with a double underscore are reserved: " + String.join(", ", underscores));
+        }
+        return String.join("; ", problems);
     }
 
     private static String reservedWordsUsed(String source) {

@@ -142,5 +142,5 @@ void main() {
         }
     }
 
-    fragColor = vec4(ao, visibility, packDistance(length(position)));
+    fragColor = finiteOr(vec4(ao, visibility, packDistance(length(position))), vec4(1.0, 1.0, packDistance(1024.0)));
 }

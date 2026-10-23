@@ -136,5 +136,5 @@ void main() {
     float blend = clamp(mix(0.12, 1.0, fresnel) * strength, 0.0, 0.92) * (1.0 - fog);
     float glint = pow(max(dot(reflected, LightDir.xyz), 0.0), 700.0) * 6.0 + pow(max(dot(reflected, LightDir.xyz), 0.0), 60.0) * 0.25;
     vec3 sun = LightColor.rgb * LightColor.w * glint * strength * HorizonColor.w * (1.0 - fog);
-    fragColor = vec4(min((reflection * blend + sun) * 0.5, vec3(1.0)), max(blend, 1.0 / 255.0));
+    fragColor = finiteOr(vec4(min((reflection * blend + sun) * 0.5, vec3(1.0)), max(blend, 1.0 / 255.0)), vec4(0.0));
 }

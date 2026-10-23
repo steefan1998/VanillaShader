@@ -56,5 +56,5 @@ void main() {
     color *= 1.0 - dot(centered, centered) * Look1.z * 1.4;
 
     color += (gradientNoise(gl_FragCoord.xy) - 0.5) / 255.0;
-    fragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+    fragColor = vec4(clamp(finiteOr(color, vec3(0.0)), 0.0, 1.0), 1.0);
 }

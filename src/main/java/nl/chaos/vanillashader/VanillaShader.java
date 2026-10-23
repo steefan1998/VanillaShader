@@ -35,7 +35,6 @@ public final class VanillaShader {
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
 
         modBus.addListener(VanillaShader::registerKeys);
-        modBus.addListener(ShaderRenderer::registerPipelines);
         NeoForge.EVENT_BUS.addListener(VanillaShader::clientTick);
         ShaderRenderer.init();
         DevCapture.init();

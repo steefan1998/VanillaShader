@@ -35,5 +35,5 @@ void main() {
     float falloff = exp(-length(fromLight) * 1.8);
 
     float strength = LightColor.w * LightScreen.z * (1.0 - Weather.y * 0.7) * (0.55 + 0.45 * Weather.z);
-    fragColor = vec4(LightColor.rgb * shafts * falloff * strength * 0.9, 1.0);
+    fragColor = vec4(finiteOr(LightColor.rgb * shafts * falloff * strength * 0.9, vec3(0.0)), 1.0);
 }

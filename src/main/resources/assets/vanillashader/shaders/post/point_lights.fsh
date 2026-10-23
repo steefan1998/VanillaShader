@@ -101,5 +101,5 @@ void main() {
 
     vec3 light = pointLights(position, normal, relativeWorld, normalWorld);
     float lightning = lightningLight(relativeWorld, normalWorld);
-    fragColor = vec4(min(light * 0.25, vec3(1.0)), min(lightning * 0.25, 1.0));
+    fragColor = finiteOr(vec4(min(light * 0.25, vec3(1.0)), min(lightning * 0.25, 1.0)), vec4(0.0));
 }

@@ -19,5 +19,5 @@ void main() {
 
     float brightness = max(color.r, max(color.g, color.b));
     float weight = smoothstep(0.68, 1.0, brightness);
-    fragColor = vec4(color * weight, 1.0);
+    fragColor = vec4(finiteOr(color * weight, vec3(0.0)), 1.0);
 }

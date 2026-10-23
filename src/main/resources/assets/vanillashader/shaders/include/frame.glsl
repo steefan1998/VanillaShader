@@ -95,5 +95,17 @@ vec3 normalFromDepth(sampler2D depthTex, vec2 uv, vec3 center) {
     vec3 down = viewPosFromDepth(uv - vec2(0.0, texel.y), texture(depthTex, uv - vec2(0.0, texel.y)).r);
     vec3 dx = abs(right.z - center.z) < abs(left.z - center.z) ? right - center : center - left;
     vec3 dy = abs(up.z - center.z) < abs(down.z - center.z) ? up - center : center - down;
-    return normalize(cross(dx, dy));
+    // A zero cross product (identical neighbours) would normalize to NaN, which some drivers show as black pixels.
+    vec3 n = cross(dx, dy);
+    float lengthSq = dot(n, n);
+    return lengthSq > 1e-12 ? n * inversesqrt(lengthSq) : vec3(0.0, 0.0, 1.0);
+}
+
+// NaN or infinity anywhere turns into black blocks on NVIDIA and Intel; replace it before it is written out.
+vec3 finiteOr(vec3 value, vec3 fallback) {
+    return any(isnan(value)) || any(isinf(value)) ? fallback : value;
+}
+
+vec4 finiteOr(vec4 value, vec4 fallback) {
+    return any(isnan(value)) || any(isinf(value)) ? fallback : value;
 }

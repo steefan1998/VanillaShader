@@ -76,7 +76,7 @@ void main() {
         vec3 viewDir = normalize(viewPosFromDepth(texCoord, 1.0));
         float towardLight = max(dot(viewDir, LightDir.xyz), 0.0);
         color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18 + pow(towardLight, 4.0) * 0.08 * Weather.z);
-        fragColor = vec4(color, 1.0);
+        fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
         return;
     }
 
@@ -163,5 +163,5 @@ void main() {
         color = mix(color, scatter, haze);
     }
 
-    fragColor = vec4(color, 1.0);
+    fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
 }

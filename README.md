@@ -42,6 +42,7 @@ Add `-Pjvm.vanillashader.profilePasses=true` to log GPU timings for every pass. 
 
 ## Notes
 
+- **GPU compatibility:** shaders stick to strict GLSL 3.30 and are checked at build time (`./gradlew validateShaders`, part of `check`) with glslang plus a check for names NVIDIA and Intel reject. If a shader still fails on some driver, only that effect turns off and the log names it; the game keeps running.
 - **GPU choice on laptops:** with both an integrated and a dedicated GPU, make sure Java (`javaw.exe`) runs on the dedicated one, under Windows Settings → Display → Graphics. Otherwise performance is much lower.
 - **No Vulkan, no DLSS:** Minecraft 26.1.2 only has an OpenGL renderer, and DLSS does not support OpenGL.
 

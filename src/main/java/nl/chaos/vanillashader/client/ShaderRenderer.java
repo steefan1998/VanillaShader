@@ -15,7 +15,9 @@ import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.logging.LogUtils;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.OptionalInt;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelTargetBundle;
@@ -25,7 +27,6 @@ import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.resources.Identifier;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
-import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import nl.chaos.vanillashader.VanillaShader;
@@ -62,7 +63,6 @@ public final class ShaderRenderer {
     private static final RenderPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays");
     private static final RenderPipeline FSR_EASU = pipeline("fsr_easu", "In");
     private static final RenderPipeline FSR_RCAS = pipeline("fsr_rcas", "In");
-    private static final List<RenderPipeline> PIPELINES = List.of(LIGHTING, POINT_LIGHTS, WATER, COMPOSITE, BRIGHT, BLUR, GOD_RAYS, FINAL, FSR_EASU, FSR_RCAS);
 
     private static final Texture LIT = new Texture("lit", 1);
     private static final Texture LIGHTING_TEX = new Texture("lighting", 2);
@@ -96,6 +96,7 @@ public final class ShaderRenderer {
     private static boolean opaqueColorCaptured;
     private static boolean featureColorCaptured;
     private static boolean failed;
+    private static final Set<String> BROKEN = new HashSet<>();
 
     private ShaderRenderer() {
     }
@@ -109,9 +110,9 @@ public final class ShaderRenderer {
         RenderScaler.init();
     }
 
-    public static void registerPipelines(RegisterRenderPipelinesEvent event) {
-        PIPELINES.forEach(event::registerPipeline);
-    }
+    // The pipelines are deliberately not registered through RegisterRenderPipelinesEvent: Minecraft treats every
+    // registered pipeline as required and drops ALL shaders (crashing the game) if one fails to compile on a driver.
+    // Compiled on first use instead, where usable() turns a failure into one missing effect.
 
     private static RenderPipeline pipeline(String name, String... samplers) {
         RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.POST_PROCESSING_SNIPPET)
@@ -248,18 +249,24 @@ public final class ShaderRenderer {
         GpuTextureView scene = main.getColorTextureView();
         GpuTextureView heights = (effects.shadows() > 0 || effects.reflections() > 0) && SHADOW_MAP.view() != null ? SHADOW_MAP.view() : BLACK.view;
 
-        draw(encoder, LIGHTING, LIGHTING_TEX.view, frame, null,
-            new Input("Depth", FULL_DEPTH.view, nearest),
-            new Input("ShadowMap", heights, nearest),
-            new Input("CloudShadow", cloudShadow != null ? cloudShadow : BLACK.view, linear));
-        if (FRAME.anyPointLights()) {
+        // Every pass checks that its shader compiled on this GPU; a broken one only loses its own effect.
+        if (usable(LIGHTING)) {
+            draw(encoder, LIGHTING, LIGHTING_TEX.view, frame, null,
+                new Input("Depth", FULL_DEPTH.view, nearest),
+                new Input("ShadowMap", heights, nearest),
+                new Input("CloudShadow", cloudShadow != null ? cloudShadow : BLACK.view, linear));
+        } else {
+            // White: no occlusion, full sun, and the farthest distance so the upsample weighs all texels alike.
+            encoder.clearColorTexture(LIGHTING_TEX.texture, 0xFFFFFFFF);
+        }
+        if (FRAME.anyPointLights() && usable(POINT_LIGHTS)) {
             draw(encoder, POINT_LIGHTS, POINT_LIGHTS_TEX.view, frame, null,
                 new Input("Depth", FULL_DEPTH.view, nearest),
                 new Input("ShadowMap", heights, nearest));
         } else {
             encoder.clearColorTexture(POINT_LIGHTS_TEX.texture, 0);
         }
-        if (effects.reflections() > 0) {
+        if (effects.reflections() > 0 && usable(WATER)) {
             draw(encoder, WATER, WATER_TEX.view, frame, null,
                 new Input("Scene", scene, linear),
                 new Input("Depth", FULL_DEPTH.view, nearest),
@@ -269,21 +276,26 @@ public final class ShaderRenderer {
             encoder.clearColorTexture(WATER_TEX.texture, 0);
         }
 
-        draw(encoder, COMPOSITE, LIT.view, frame, null,
-            new Input("Scene", scene, linear),
-            new Input("Depth", FULL_DEPTH.view, nearest),
-            new Input("OpaqueDepth", opaqueDepth.view, nearest),
-            new Input("Lighting", LIGHTING_TEX.view, nearest),
-            new Input("PointLights", POINT_LIGHTS_TEX.view, nearest),
-            new Input("Water", WATER_TEX.view, linear),
-            // Without both snapshots, comparing a texture with itself means "no veil anywhere".
-            new Input("OpaqueColor", featureColorCaptured ? OPAQUE_COLOR.view : scene, nearest),
-            new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.view : scene, nearest),
-            new Input("ShadowMap", heights, nearest));
+        if (usable(COMPOSITE)) {
+            draw(encoder, COMPOSITE, LIT.view, frame, null,
+                new Input("Scene", scene, linear),
+                new Input("Depth", FULL_DEPTH.view, nearest),
+                new Input("OpaqueDepth", opaqueDepth.view, nearest),
+                new Input("Lighting", LIGHTING_TEX.view, nearest),
+                new Input("PointLights", POINT_LIGHTS_TEX.view, nearest),
+                new Input("Water", WATER_TEX.view, linear),
+                // Without both snapshots, comparing a texture with itself means "no veil anywhere".
+                new Input("OpaqueColor", featureColorCaptured ? OPAQUE_COLOR.view : scene, nearest),
+                new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.view : scene, nearest),
+                new Input("ShadowMap", heights, nearest));
+        } else {
+            // Bloom, god rays and grading still work on the plain level.
+            encoder.copyTextureToTexture(main.getColorTexture(), LIT.texture, 0, 0, 0, 0, 0, width, height);
+        }
 
         GpuTextureView bloomNear = BLACK.view;
         GpuTextureView bloomFar = BLACK.view;
-        if (effects.bloom() > 0) {
+        if (effects.bloom() > 0 && usable(BRIGHT) && usable(BLUR)) {
             draw(encoder, BRIGHT, BLOOM_NEAR.view, frame, null, new Input("In", LIT.view, linear));
             blur(encoder, frame, BLOOM_NEAR, BLOOM_NEAR_TMP, linear, effects.bloom() >= 4 ? 2 : 1);
             bloomNear = BLOOM_NEAR.view;
@@ -295,20 +307,41 @@ public final class ShaderRenderer {
         }
 
         GpuTextureView rays = BLACK.view;
-        if (effects.godRays() > 0 && FRAME.sunOnScreen()) {
+        if (effects.godRays() > 0 && FRAME.sunOnScreen() && usable(GOD_RAYS)) {
             draw(encoder, GOD_RAYS, RAYS.view, frame, null,
                 new Input("Scene", scene, linear),
                 new Input("Depth", FULL_DEPTH.view, nearest));
             rays = RAYS.view;
         }
 
-        draw(encoder, FINAL, main.getColorTextureView(), frame, null,
-            new Input("Lit", LIT.view, linear),
-            new Input("BloomNear", bloomNear, linear),
-            new Input("BloomFar", bloomFar, linear),
-            new Input("Rays", rays, linear));
+        // Without the final pass nothing is written back, and the level simply shows as vanilla.
+        if (usable(FINAL)) {
+            draw(encoder, FINAL, main.getColorTextureView(), frame, null,
+                new Input("Lit", LIT.view, linear),
+                new Input("BloomNear", bloomNear, linear),
+                new Input("BloomFar", bloomFar, linear),
+                new Input("Rays", rays, linear));
+        }
 
         uniforms.rotate();
+    }
+
+    /**
+     * Whether the pipeline's shaders compiled on this GPU. Drivers differ in what GLSL they accept, so instead of
+     * failing the whole mod, a broken pass is skipped and reported once.
+     */
+    private static boolean usable(RenderPipeline pipeline) {
+        boolean valid = RenderSystem.getDevice().precompilePipeline(pipeline).isValid();
+        if (!valid && BROKEN.add(pipeline.getLocation().toString())) {
+            LOGGER.warn("Vanilla Shader: {} did not compile on {} ({}); that effect is turned off. The shader error is logged above.",
+                pipeline.getLocation(), RenderSystem.getDevice().getRenderer(), RenderSystem.getDevice().getVersion());
+        }
+        return valid;
+    }
+
+    /** FSR needs both of its passes; without them the scaler keeps rendering at native resolution. */
+    static boolean fsrUsable() {
+        return usable(FSR_EASU) && usable(FSR_RCAS);
     }
 
     /**
