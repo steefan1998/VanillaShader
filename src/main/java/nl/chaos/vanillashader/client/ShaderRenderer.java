@@ -33,6 +33,7 @@ import nl.chaos.vanillashader.VanillaShader;
 import nl.chaos.vanillashader.compat.IrisCompat;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
 import nl.chaos.vanillashader.config.ShaderConfig;
+import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
@@ -108,6 +109,11 @@ public final class ShaderRenderer {
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterTranslucentBlocks);
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterLevel);
         RenderScaler.init();
+    }
+
+    /** Called from the GameRenderer mixin with the projection the level is drawn with this frame. */
+    public static void setLevelProjection(Matrix4fc projection) {
+        FRAME.setLevelProjection(projection);
     }
 
     // The pipelines are deliberately not registered through RegisterRenderPipelinesEvent: Minecraft treats every

@@ -18,6 +18,7 @@ import net.minecraft.world.phys.Vec3;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
 import nl.chaos.vanillashader.config.ShaderConfig;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -41,6 +42,8 @@ final class FrameState {
     // Captured mid-frame, while the level render state is still complete.
     private final Matrix4f projection = new Matrix4f();
     private final Matrix4f viewRotation = new Matrix4f();
+    private final Matrix4f levelProjection = new Matrix4f();
+    private boolean levelProjectionValid;
     private Vec3 cameraPos = Vec3.ZERO;
     private FogType fogType = FogType.NONE;
     private final Vector4f fogColor = new Vector4f();
@@ -74,9 +77,16 @@ final class FrameState {
     private float smoothedSkyLight = 1.0F;
     private float frameCounter;
 
+    void setLevelProjection(Matrix4fc projection) {
+        levelProjection.set(projection);
+        levelProjectionValid = true;
+    }
+
     void capture(LevelRenderState state) {
         CameraRenderState cam = state.cameraRenderState;
-        projection.set(cam.projectionMatrix);
+        // Prefer the projection actually used this frame (with view bobbing); fall back to the plain camera one.
+        projection.set(levelProjectionValid ? levelProjection : cam.projectionMatrix);
+        levelProjectionValid = false;
         viewRotation.set(cam.viewRotationMatrix);
         cameraPos = cam.pos;
         fogType = cam.fogType;

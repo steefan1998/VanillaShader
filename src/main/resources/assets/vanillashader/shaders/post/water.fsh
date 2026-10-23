@@ -51,7 +51,8 @@ vec3 traceReflection(vec3 origin, vec3 dir) {
     int steps = int(Quality0.y);
     int refine = int(Quality0.z);
     float maxDistance = min(Quality1.z, 128.0);
-    float jitter = gradientNoise(gl_FragCoord.xy + DepthParams.z * 5.588);
+    // Fixed per pixel: a pattern that changes every frame makes the water shimmer.
+    float jitter = gradientNoise(gl_FragCoord.xy);
     float previous = 0.0;
 
     for (int i = 1; i <= steps; i++) {
