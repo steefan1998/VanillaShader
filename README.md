@@ -37,6 +37,7 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
 - **WeatherStory integration:** mist and sandstorms keep their look, and clouds and storms dim the sun effects.
 - **AMD FSR 1 upscaling:** a render scale per profile and a sharpness slider. The HUD always stays sharp.
 - **Settings:** in Sodium's Video Settings (a "Vanilla Shader" page) or in NeoForge's config screen. The Look page has a reset button.
+- **Languages:** English, Dutch, German, French, Spanish, Brazilian Portuguese, Italian, Polish, Russian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese and Korean.
 
 ## Requirements
 
