@@ -30,7 +30,7 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
   - ice and glass are recognised and left alone;
   - under water: caustics, depth tint and a gentle wobble.
 - **Light and atmosphere:** ambient occlusion, bloom, god rays, a sun-tinted haze over distant terrain, colour grading and a vignette.
-- **Golden hour:** at sunrise and sunset the sky and clouds turn amber around a glowing sun, the light turns orange and terrain facing away from the sun becomes a dark silhouette.
+- **Golden hour:** at sunrise and sunset the sky and clouds turn amber around a glowing sun, the light turns orange and terrain facing away from the sun becomes a dark silhouette. Rain and thick fog tone it down.
 - **Ray-traced lighting** (optional toggle, off by default): rays traced through a voxel copy of the blocks around you. Lava, glowstone, fire and other light blocks light up their surroundings in their own colour, also from off screen, and obsidian, metal blocks, glass, ice and polished stone get glossy reflections. This is not hardware ray tracing (RTX): Minecraft 26.1.2 only has OpenGL, which has no access to RT cores.
 - **Dimensions:** the Nether and the End get their own treatment (no sun effects, the End sky flashes light the world). Modded dimensions such as The Aether II or Stellaris are handled the same way, by whether they have a sun; they are not tested separately.
 - **Dynamic lighting:** smooth, coloured light from:

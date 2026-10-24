@@ -75,9 +75,12 @@ float veilAmount(vec3 base, vec3 withFeatures) {
 // of the original brightness is kept, so clouds keep their form while glowing orange.
 vec3 goldenHour(vec3 color, vec3 viewDir, float sunLike, float shape) {
     float sunSide = sunLike * pow(max(dot(viewDir, LightDir.xyz), 0.0), 2.0);
-    vec3 amber = mix(vec3(1.0, 0.66, 0.3), vec3(0.92, 0.44, 0.17), smoothstep(0.0, 0.55, viewToWorld(viewDir).y));
+    float up = viewToWorld(viewDir).y;
+    vec3 amber = mix(vec3(1.0, 0.66, 0.3), vec3(0.92, 0.44, 0.17), smoothstep(0.0, 0.55, up));
+    // Below the horizon (only seen through fog or from high up) the glow fades towards a darker orange.
+    amber *= mix(0.55, 1.0, smoothstep(-0.25, 0.02, up));
     amber = mix(amber, vec3(1.0, 0.8, 0.5), sunSide * 0.6);
-    return amber * mix(0.75 + 0.5 * sunSide, min(luma(color) * 2.2 + 0.2, 1.3), shape);
+    return amber * mix(0.7 + 0.35 * sunSide, min(luma(color) * 2.2 + 0.2, 1.3), shape);
 }
 
 void main() {
@@ -92,14 +95,14 @@ void main() {
         // Golden hour: the whole sky turns amber, yellow near the horizon and around the sun, deeper orange higher up.
         // The moon is bluish (blue > red), so its side of the sky gets no sun lobe during twilight.
         float sunLike = step(LightColor.b, LightColor.r);
-        float golden = Weather.z * (1.0 - Weather.x * 0.8);
+        float golden = Weather.z * (1.0 - Weather.x) * smoothstep(24.0, 128.0, Quality1.z); // not in rain or thick fog
         if (golden > 0.001) {
             // The sun disc itself (the brightest pixels) stays visible through the colouring.
             float disc = smoothstep(0.75, 0.95, luma(color));
             color = mix(color, goldenHour(color, viewDir, sunLike, 0.35), min(golden * 1.6, 1.0) * 0.9 * (1.0 - disc));
         }
         color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18
-            + (pow(towardLight, 4.0) * 0.3 + pow(towardLight, 1.5) * 0.12) * golden * sunLike);
+            + (pow(towardLight, 4.0) * 0.2 + pow(towardLight, 1.5) * 0.05) * golden * sunLike);
         fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
         return;
     }
@@ -183,7 +186,7 @@ void main() {
     }
 
     // Looking into a low sun, everything shows its shaded side: terrain becomes a dark silhouette against the sky.
-    float sunsetSun = Weather.z * step(LightColor.b, LightColor.r) * (1.0 - Weather.x * 0.8) * HorizonColor.w;
+    float sunsetSun = Weather.z * step(LightColor.b, LightColor.r) * (1.0 - Weather.x) * HorizonColor.w * smoothstep(24.0, 128.0, Quality1.z);
     if (!underwater && sunsetSun > 0.001) {
         float backlit = pow(max(dot(viewDir, LightDir.xyz), 0.0), 3.0) * smoothstep(8.0, 48.0, dist);
         color *= 1.0 - sunsetSun * backlit * 0.4 * (1.0 - fog) * (1.0 - veil);
@@ -197,7 +200,7 @@ void main() {
         // Where WeatherStory already fogs the view (mist, sandstorms), our haze would only wash it out further.
         haze *= (1.0 - veil) * smoothstep(24.0, 128.0, Quality1.z);
         // At sunset the glow around the sun is wider and the air itself turns amber.
-        float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), mix(6.0, 2.5, sunsetSun));
+        float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), mix(6.0, 3.5, sunsetSun));
         vec3 airColor = mix(HorizonColor.rgb, SkyColor.rgb, 0.35 * (1.0 - Weather.z));
         airColor = mix(airColor, vec3(0.95, 0.6, 0.3), sunsetSun * 0.6);
         vec3 scatter = mix(airColor, LightColor.rgb, towardLight * LightColor.w * (0.35 + 0.65 * Weather.z));
@@ -206,8 +209,11 @@ void main() {
 
     // Clouds catch the low sun as well: anything floating far above the terrain glows orange at golden hour.
     if (sunsetSun > 0.001) {
-        float terrainTopY = Misc.x > 0.0 ? Misc.x : 160.0;
-        float cloud = smoothstep(terrainTopY + 8.0, terrainTopY + 24.0, viewToWorld(position).y + CameraPos.y)
+        // Above both the terrain and the camera, and looked up at, so far-away hills never count as cloud (the
+        // height map can lag right after a teleport).
+        vec3 offset = viewToWorld(position);
+        float floorY = max(Misc.x, CameraPos.y) + 8.0;
+        float cloud = smoothstep(floorY, floorY + 16.0, offset.y + CameraPos.y) * smoothstep(0.02, 0.1, offset.y / dist)
             * smoothstep(48.0, 128.0, dist);
         color = mix(color, goldenHour(color, viewDir, 1.0, 0.5), cloud * min(sunsetSun * 1.6, 1.0) * 0.85);
     }

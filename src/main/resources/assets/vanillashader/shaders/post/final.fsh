@@ -45,7 +45,7 @@ void main() {
     color = max(mix(vec3(grey), color, saturation), 0.0);
 
     // Golden hour warmth during sunrise/sunset, a cool tint at night.
-    vec3 tint = mix(vec3(1.0), vec3(1.12, 0.98, 0.8), Weather.z * (1.0 - Weather.x * 0.7));
+    vec3 tint = mix(vec3(1.0), vec3(1.12, 0.98, 0.8), Weather.z * (1.0 - Weather.x));
     tint = mix(tint, vec3(0.9, 0.96, 1.08), (1.0 - SkyColor.w) * Quality1.w);
     if (Weather.w > 0.5 && Weather.w < 1.5) {
         tint *= vec3(0.72, 0.93, 1.05);
