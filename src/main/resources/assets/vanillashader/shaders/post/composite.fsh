@@ -90,7 +90,7 @@ void main() {
 
     if (isSky(depth)) {
         // Soft glow around the sun so it blooms like a real light source.
-        vec3 viewDir = normalize(viewPosFromDepth(texCoord, 0.5)); // any depth gives the direction; the far plane can be degenerate
+        vec3 viewDir = normalize(viewPosFromDepth(texCoord, 0.9999)); // far away, so view bobbing's small sideways shift does not swing it; the far plane itself can be degenerate
         float towardLight = max(dot(viewDir, LightDir.xyz), 0.0);
         // Golden hour: the whole sky turns amber, yellow near the horizon and around the sun, deeper orange higher up.
         // The moon is bluish (blue > red), so its side of the sky gets no sun lobe during twilight.

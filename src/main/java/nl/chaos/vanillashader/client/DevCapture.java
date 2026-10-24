@@ -28,6 +28,8 @@ public final class DevCapture {
     private static final Profile[] PROFILES = profiles();
     private static final int SETTLE_TICKS = 200;
     private static final int TICKS_PER_SHOT = Integer.getInteger("vanillashader.devCapture.ticksPerShot", 30);
+    // -Dvanillashader.devCapture.walk=true holds the forward key during the shots, to check effects with view bobbing.
+    private static final boolean WALK = Boolean.getBoolean("vanillashader.devCapture.walk");
 
     private static String[] scenes = new String[0];
     private static int ticks;
@@ -71,7 +73,10 @@ public final class DevCapture {
             runCommands(minecraft, server, false);
         }
         ticks++;
-        if (ticks >= SETTLE_TICKS - 3 && (ticks - SETTLE_TICKS + 3) % TICKS_PER_SHOT == 0) {
+        if (WALK) {
+            minecraft.options.keyUp.setDown(ticks >= SETTLE_TICKS - 20 && shot < PROFILES.length);
+        }
+        if (ticks >= SETTLE_TICKS - 3 &&(ticks - SETTLE_TICKS + 3) % TICKS_PER_SHOT == 0) {
             runCommands(minecraft, server, true);
         }
         if (ticks < SETTLE_TICKS || (ticks - SETTLE_TICKS) % TICKS_PER_SHOT != 0) {
@@ -109,7 +114,7 @@ public final class DevCapture {
         }
         pendingShot = false;
         Minecraft minecraft = Minecraft.getInstance();
-        String name = "vanillashader_" + scene + "_" + PROFILES[shot].name().toLowerCase(Locale.ROOT) + ".png";
+        String name = "vanillashader_" + scene + "_" + shot + "_" + PROFILES[shot].name().toLowerCase(Locale.ROOT) + ".png";
         Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(), 1, message -> LOGGER.info("Dev capture: {}", message.getString()));
         shot++;
         if (shot >= PROFILES.length) {
