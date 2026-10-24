@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "횃불, 랜턴, 발광석 등 광원이 부드럽고 색이 있는 빛으로 주변을 밝힙니다. 플레이어와 몹이 들고 있을 때, 땅에 떨어져 있을 때, 월드에 설치되어 있을 때 모두 적용됩니다. 빛나는 몹도 빛나는 만큼 월드를 밝힙니다: 워든의 심장 박동, 폭발 직전의 크리퍼, 엔더맨의 눈, 블레이즈, 발광 오징어, 화염구 등.",
   "vanillashader.config.reset_look": "화면 설정 초기화",
   "vanillashader.config.reset_look.tooltip": "이 페이지의 모든 슬라이더를 기본값으로 되돌립니다.",
-  "vanillashader.config.reset_look.confirm": "노출, 채도, 대비, 색온도, 대기, 물 반사율, 비네트를 기본값으로 되돌릴까요?"
+  "vanillashader.config.reset_look.confirm": "노출, 채도, 대비, 색온도, 대기, 물 반사율, 비네트를 기본값으로 되돌릴까요?",
+  "vanillashader.config.ray_tracing": "레이 트레이싱 조명",
+  "vanillashader.config.ray_tracing.tooltip": "주변 블록 사이로 광선을 추적합니다. 흑요석, 금속, 유리, 얼음, 윤나는 돌에 광택 반사가 생기고, 용암, 발광석, 불이 화면 밖에서도 자기 색으로 주변을 밝힙니다. 다른 효과보다 무겁습니다."
 }

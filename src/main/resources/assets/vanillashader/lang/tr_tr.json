@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Meşaleler, fenerler, ışıltaş ve diğer ışık kaynakları çevrelerini yumuşak, renkli bir ışıkla aydınlatır: oyuncuların ve yaratıkların elinde, yerde ya da dünyaya yerleştirilmiş halde. Parlayan yaratıklar da dünyayı parladıkları kadar aydınlatır: Gardiyan'ın kalp atışı, patlamak üzere olan bir creeper, Enderman gözleri, Blaze'ler, parlayan mürekkep balıkları, ateş topları ve daha fazlası.",
   "vanillashader.config.reset_look": "Görünümü sıfırla",
   "vanillashader.config.reset_look.tooltip": "Bu sayfadaki tüm kaydırıcıları varsayılan değerlerine döndürür.",
-  "vanillashader.config.reset_look.confirm": "Pozlama, doygunluk, kontrast, sıcaklık, atmosfer, su yansıtıcılığı ve vinyet varsayılan değerlerine döndürülsün mü?"
+  "vanillashader.config.reset_look.confirm": "Pozlama, doygunluk, kontrast, sıcaklık, atmosfer, su yansıtıcılığı ve vinyet varsayılan değerlerine döndürülsün mü?",
+  "vanillashader.config.ray_tracing": "Işın izlemeli aydınlatma",
+  "vanillashader.config.ray_tracing.tooltip": "Çevrendeki bloklar arasından ışınlar izler: obsidyen, metal, cam, buz ve cilalı taş üzerinde parlak yansımalar; lav, ışıltaş ve ateş çevrelerini kendi renkleriyle, ekran dışından bile aydınlatır. Diğer efektlerden daha ağırdır."
 }

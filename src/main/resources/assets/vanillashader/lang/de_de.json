@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Fackeln, Laternen, Leuchtstein und andere Lichtquellen beleuchten ihre Umgebung mit weichem, farbigem Licht: in der Hand von Spielern und Mobs, auf dem Boden liegend oder in der Welt platziert. Leuchtende Mobs erhellen die Welt ebenfalls, so stark sie leuchten: der Herzschlag des Wärters, ein Creeper kurz vor der Explosion, Endermanaugen, Lohen, Leuchttintenfische, Feuerkugeln und mehr.",
   "vanillashader.config.reset_look": "Aussehen zurücksetzen",
   "vanillashader.config.reset_look.tooltip": "Alle Regler auf dieser Seite auf ihren Standardwert zurücksetzen.",
-  "vanillashader.config.reset_look.confirm": "Belichtung, Sättigung, Kontrast, Wärme, Atmosphäre, Wasserreflexion und Vignette auf die Standardwerte zurücksetzen?"
+  "vanillashader.config.reset_look.confirm": "Belichtung, Sättigung, Kontrast, Wärme, Atmosphäre, Wasserreflexion und Vignette auf die Standardwerte zurücksetzen?",
+  "vanillashader.config.ray_tracing": "Raytracing-Beleuchtung",
+  "vanillashader.config.ray_tracing.tooltip": "Verfolgt Strahlen durch die Blöcke um dich herum: glänzende Spiegelungen auf Obsidian, Metall, Glas, Eis und poliertem Stein, und Lava, Leuchtstein und Feuer färben ihre Umgebung in ihrer eigenen Farbe, auch von außerhalb des Bildes. Aufwendiger als die anderen Effekte."
 }

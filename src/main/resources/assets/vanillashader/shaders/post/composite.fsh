@@ -8,6 +8,8 @@ uniform sampler2D OpaqueDepthSampler;  // only opaque geometry
 uniform sampler2D LightingSampler;       // half res: R = AO, G = sun visibility, BA = packed distance
 uniform sampler2D PointLightsSampler;    // half res: RGB = point light / 4, A = lightning / 4
 uniform sampler2D WaterSampler;          // half res: RGB = weighted reflection + glint / 2, A = blend (0 = no water)
+uniform sampler2D RtLightSampler;        // half res: ray-traced light from emissive blocks / 4 (black when ray tracing is off)
+uniform sampler2D RtReflectSampler;      // half res: ray-traced glossy reflections, premultiplied / 2, A = blend
 uniform sampler2D OpaqueColorSampler;   // level after opaque geometry
 uniform sampler2D FeatureColorSampler;  // ...and after translucent features (WeatherStory mist and sand wisps)
 uniform sampler2D ShadowMapSampler;     // height map, also marks which columns have water on top
@@ -20,7 +22,7 @@ out vec4 fragColor;
 
 // Depth-aware upsample of the half-resolution lighting buffers: bilinear weights, reduced for texels whose
 // distance differs from this pixel's so light and shadow do not bleed across silhouettes.
-void upsampleLighting(float dist, out vec4 lighting, out vec4 points) {
+void upsampleLighting(float dist, out vec4 lighting, out vec4 points, out vec4 traced) {
     ivec2 size = textureSize(LightingSampler, 0);
     vec2 coord = texCoord * vec2(size) - 0.5;
     ivec2 base = ivec2(floor(coord));
@@ -28,6 +30,7 @@ void upsampleLighting(float dist, out vec4 lighting, out vec4 points) {
     float tolerance = 0.03 * dist + 0.1;
     lighting = vec4(0.0);
     points = vec4(0.0);
+    traced = vec4(0.0);
     float total = 0.0;
     for (int i = 0; i < 4; i++) {
         ivec2 offset = ivec2(i & 1, i >> 1);
@@ -37,10 +40,12 @@ void upsampleLighting(float dist, out vec4 lighting, out vec4 points) {
         w *= exp(-abs(unpackDistance(sampleLighting.ba) - dist) / tolerance) + 1e-4;
         lighting += sampleLighting * w;
         points += texelFetch(PointLightsSampler, texel, 0) * w;
+        traced += texelFetch(RtLightSampler, texel, 0) * w;
         total += w;
     }
     lighting /= total;
     points /= total;
+    traced /= total;
 }
 
 // Moving light patterns that sunlight forms through a wavy water surface: thin bright lines where three
@@ -66,6 +71,15 @@ float veilAmount(vec3 base, vec3 withFeatures) {
     return clamp(max(alongFog, length(diff) * 1.5), 0.0, 1.0);
 }
 
+// Golden hour sky colour: yellow near the horizon and around the sun, deeper orange higher up. `shape` is how much
+// of the original brightness is kept, so clouds keep their form while glowing orange.
+vec3 goldenHour(vec3 color, vec3 viewDir, float sunLike, float shape) {
+    float sunSide = sunLike * pow(max(dot(viewDir, LightDir.xyz), 0.0), 2.0);
+    vec3 amber = mix(vec3(1.0, 0.66, 0.3), vec3(0.92, 0.44, 0.17), smoothstep(0.0, 0.55, viewToWorld(viewDir).y));
+    amber = mix(amber, vec3(1.0, 0.8, 0.5), sunSide * 0.6);
+    return amber * mix(0.75 + 0.5 * sunSide, min(luma(color) * 2.2 + 0.2, 1.3), shape);
+}
+
 void main() {
     vec3 color = texture(SceneSampler, texCoord).rgb;
     float depth = texture(DepthSampler, texCoord).r;
@@ -73,9 +87,19 @@ void main() {
 
     if (isSky(depth)) {
         // Soft glow around the sun so it blooms like a real light source.
-        vec3 viewDir = normalize(viewPosFromDepth(texCoord, 1.0));
+        vec3 viewDir = normalize(viewPosFromDepth(texCoord, 0.5)); // any depth gives the direction; the far plane can be degenerate
         float towardLight = max(dot(viewDir, LightDir.xyz), 0.0);
-        color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18 + pow(towardLight, 4.0) * 0.08 * Weather.z);
+        // Golden hour: the whole sky turns amber, yellow near the horizon and around the sun, deeper orange higher up.
+        // The moon is bluish (blue > red), so its side of the sky gets no sun lobe during twilight.
+        float sunLike = step(LightColor.b, LightColor.r);
+        float golden = Weather.z * (1.0 - Weather.x * 0.8);
+        if (golden > 0.001) {
+            // The sun disc itself (the brightest pixels) stays visible through the colouring.
+            float disc = smoothstep(0.75, 0.95, luma(color));
+            color = mix(color, goldenHour(color, viewDir, sunLike, 0.35), min(golden * 1.6, 1.0) * 0.9 * (1.0 - disc));
+        }
+        color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18
+            + (pow(towardLight, 4.0) * 0.3 + pow(towardLight, 1.5) * 0.12) * golden * sunLike);
         fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
         return;
     }
@@ -87,7 +111,8 @@ void main() {
     float fog = vanillaFog(viewToWorld(position));
     vec4 lightingBuffer;
     vec4 pointBuffer;
-    upsampleLighting(dist, lightingBuffer, pointBuffer);
+    vec4 tracedLight;
+    upsampleLighting(dist, lightingBuffer, pointBuffer, tracedLight);
 
     // Water comes from its own half-resolution pass; only apply it where this pixel really is translucent so the
     // blurrier edges of that buffer stay off the shore.
@@ -111,10 +136,16 @@ void main() {
             float visibility = lightingBuffer.g;
             // Shade is lit by the blue sky; sunlit surfaces pick up a hint of the sun's colour.
             vec3 shade = vec3(0.52, 0.58, 0.72);
-            vec3 sunlit = vec3(1.0) + (LightColor.rgb - 0.85) * 0.15;
+            // ...strongly at golden hour, when the low sun paints everything it reaches orange.
+            vec3 sunlit = vec3(1.0) + (LightColor.rgb - 0.85) * mix(0.15, 0.5, Weather.z);
             lighting *= mix(vec3(1.0), mix(shade, sunlit, visibility), strength);
         }
         color = max(color - base * (1.0 - lighting) * (1.0 - veil) * (1.0 - fog), 0.0);
+        // Ray-traced reflections on glossy blocks (obsidian, metal, glass, polished stone).
+        vec4 traced = texture(RtReflectSampler, texCoord);
+        if (traced.a > 0.002) {
+            color = color * (1.0 - traced.a) + traced.rgb * 2.0;
+        }
     }
 
     // Under water, sunlight through the waves draws caustics on the bottom and walls, fading with depth and fog.
@@ -136,7 +167,8 @@ void main() {
     color += color * lightning * flashColor + flashColor * lightning * 0.06 * (1.0 - fog);
 
     // Dynamic lights: tint by the surface's own colour, strongest in the dark (like vanilla block light in daylight).
-    vec3 handLight = pointBuffer.rgb * 4.0;
+    // Ray-traced light from emissive blocks joins the point lights here.
+    vec3 handLight = pointBuffer.rgb * 4.0 + tracedLight.rgb * 4.0;
     if (dot(handLight, handLight) > 1e-5) {
         // Estimate how dark the surroundings are from a few nearby samples, then brighten with one smooth gain so
         // the texture keeps its contrast instead of being normalised pixel by pixel.
@@ -150,6 +182,13 @@ void main() {
         color += color * gain * handLight * (1.0 - luma(color)) * 1.5;
     }
 
+    // Looking into a low sun, everything shows its shaded side: terrain becomes a dark silhouette against the sky.
+    float sunsetSun = Weather.z * step(LightColor.b, LightColor.r) * (1.0 - Weather.x * 0.8) * HorizonColor.w;
+    if (!underwater && sunsetSun > 0.001) {
+        float backlit = pow(max(dot(viewDir, LightDir.xyz), 0.0), 3.0) * smoothstep(8.0, 48.0, dist);
+        color *= 1.0 - sunsetSun * backlit * 0.4 * (1.0 - fog) * (1.0 - veil);
+    }
+
     // Aerial perspective: distant terrain fades into a sun-tinted haze.
     if (!underwater && Weather.w < 1.5) {
         // Thicker haze at golden hour, light at midday so colours stay saturated.
@@ -157,10 +196,20 @@ void main() {
         float haze = (1.0 - exp(-dist * density)) * 0.6;
         // Where WeatherStory already fogs the view (mist, sandstorms), our haze would only wash it out further.
         haze *= (1.0 - veil) * smoothstep(24.0, 128.0, Quality1.z);
-        float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), 6.0);
+        // At sunset the glow around the sun is wider and the air itself turns amber.
+        float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), mix(6.0, 2.5, sunsetSun));
         vec3 airColor = mix(HorizonColor.rgb, SkyColor.rgb, 0.35 * (1.0 - Weather.z));
+        airColor = mix(airColor, vec3(0.95, 0.6, 0.3), sunsetSun * 0.6);
         vec3 scatter = mix(airColor, LightColor.rgb, towardLight * LightColor.w * (0.35 + 0.65 * Weather.z));
         color = mix(color, scatter, haze);
+    }
+
+    // Clouds catch the low sun as well: anything floating far above the terrain glows orange at golden hour.
+    if (sunsetSun > 0.001) {
+        float terrainTopY = Misc.x > 0.0 ? Misc.x : 160.0;
+        float cloud = smoothstep(terrainTopY + 8.0, terrainTopY + 24.0, viewToWorld(position).y + CameraPos.y)
+            * smoothstep(48.0, 128.0, dist);
+        color = mix(color, goldenHour(color, viewDir, 1.0, 0.5), cloud * min(sunsetSun * 1.6, 1.0) * 0.85);
     }
 
     fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);

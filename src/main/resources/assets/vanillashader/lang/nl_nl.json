@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Fakkels, lantaarns, glowstone en andere lichtbronnen verlichten hun omgeving met zacht, gekleurd licht: in de hand van spelers en mobs, op de grond of geplaatst in de wereld. Lichtgevende mobs verlichten de wereld ook, zo fel als ze gloeien: de hartslag van de Warden, een creeper die gaat ontploffen, Enderman-ogen, Blazes, glow squids, vuurballen en meer.",
   "vanillashader.config.reset_look": "Uiterlijk resetten",
   "vanillashader.config.reset_look.tooltip": "Zet alle schuifjes op deze pagina terug naar hun standaardwaarde.",
-  "vanillashader.config.reset_look.confirm": "Belichting, verzadiging, contrast, warmte, atmosfeer, waterspiegeling en vignet terugzetten naar de standaardwaarden?"
+  "vanillashader.config.reset_look.confirm": "Belichting, verzadiging, contrast, warmte, atmosfeer, waterspiegeling en vignet terugzetten naar de standaardwaarden?",
+  "vanillashader.config.ray_tracing": "Ray-traced belichting",
+  "vanillashader.config.ray_tracing.tooltip": "Volgt stralen door de blokken om je heen: glanzende reflecties op obsidiaan, metaal, glas, ijs en gepolijste steen, en lava, glowstone en vuur kleuren hun omgeving in hun eigen kleur, ook van buiten beeld. Zwaarder dan de andere effecten."
 }

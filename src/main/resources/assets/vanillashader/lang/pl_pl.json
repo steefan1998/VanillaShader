@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Pochodnie, latarnie, jasnogłaz i inne źródła światła oświetlają otoczenie miękkim, kolorowym światłem: trzymane przez graczy i moby, leżące na ziemi lub postawione w świecie. Świecące moby też oświetlają świat, tak mocno jak świecą: bicie serca Strażnika, creeper tuż przed wybuchem, oczy Endermana, Blaze'y, świecące kałamarnice, kule ognia i więcej.",
   "vanillashader.config.reset_look": "Przywróć wygląd",
   "vanillashader.config.reset_look.tooltip": "Przywraca domyślną wartość wszystkich suwaków na tej stronie.",
-  "vanillashader.config.reset_look.confirm": "Przywrócić domyślne wartości ekspozycji, nasycenia, kontrastu, ciepła, atmosfery, odbijania wody i winiety?"
+  "vanillashader.config.reset_look.confirm": "Przywrócić domyślne wartości ekspozycji, nasycenia, kontrastu, ciepła, atmosfery, odbijania wody i winiety?",
+  "vanillashader.config.ray_tracing": "Oświetlenie ray tracing",
+  "vanillashader.config.ray_tracing.tooltip": "Śledzi promienie przez bloki wokół ciebie: błyszczące odbicia na obsydianie, metalu, szkle, lodzie i polerowanym kamieniu, a lawa, jasnogłaz i ogień barwią otoczenie własnym kolorem, także spoza ekranu. Bardziej wymagające niż pozostałe efekty."
 }

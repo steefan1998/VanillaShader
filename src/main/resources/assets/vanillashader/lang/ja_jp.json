@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "松明、ランタン、グロウストーンなどの光源が、やわらかい色付きの光で周囲を照らします。プレイヤーやモブが持っているとき、地面に落ちているとき、ワールドに置かれているときに有効です。光るモブも、その輝きに応じてワールドを照らします：ウォーデンの鼓動、爆発寸前のクリーパー、エンダーマンの目、ブレイズ、ヒカリイカ、火の玉など。",
   "vanillashader.config.reset_look": "画質調整をリセット",
   "vanillashader.config.reset_look.tooltip": "このページのすべてのスライダーを初期値に戻します。",
-  "vanillashader.config.reset_look.confirm": "露出、彩度、コントラスト、色温度、大気、水の反射率、ビネットを初期値に戻しますか？"
+  "vanillashader.config.reset_look.confirm": "露出、彩度、コントラスト、色温度、大気、水の反射率、ビネットを初期値に戻しますか？",
+  "vanillashader.config.ray_tracing": "レイトレーシング照明",
+  "vanillashader.config.ray_tracing.tooltip": "周囲のブロックの中で光線を追跡します。黒曜石、金属、ガラス、氷、磨かれた石に光沢のある反射が映り、溶岩、グロウストーン、炎が画面外からでも自分の色で周囲を照らします。他のエフェクトより負荷が高くなります。"
 }

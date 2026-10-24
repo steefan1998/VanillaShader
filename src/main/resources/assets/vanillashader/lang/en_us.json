@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Torches, lanterns, glowstone and other light sources light up their surroundings with smooth, coloured light: held by players and mobs, lying on the ground or placed in the world. Glowing mobs light the world too, as bright as they glow: the Warden's heartbeat, a creeper about to explode, Enderman eyes, Blazes, glow squids, fireballs and more.",
   "vanillashader.config.reset_look": "Reset look",
   "vanillashader.config.reset_look.tooltip": "Put every slider on this page back to its default value.",
-  "vanillashader.config.reset_look.confirm": "Put exposure, saturation, contrast, warmth, atmosphere, water reflectivity and vignette back to their defaults?"
+  "vanillashader.config.reset_look.confirm": "Put exposure, saturation, contrast, warmth, atmosphere, water reflectivity and vignette back to their defaults?",
+  "vanillashader.config.ray_tracing": "Ray-traced lighting",
+  "vanillashader.config.ray_tracing.tooltip": "Traces rays through the blocks around you: glossy reflections on obsidian, metal, glass, ice and polished stone, and lava, glowstone and fire light up their surroundings in their own colour, also from off screen. Heavier than the other effects."
 }

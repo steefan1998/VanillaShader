@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "火把、灯笼、荧石等光源会以柔和的彩色光照亮周围：无论是玩家和生物手持、掉落在地上还是放置在世界中。发光的生物也会按其亮度照亮世界：监守者的心跳、即将爆炸的苦力怕、末影人的眼睛、烈焰人、发光鱿鱼、火球等等。",
   "vanillashader.config.reset_look": "重置画面",
   "vanillashader.config.reset_look.tooltip": "将本页所有滑块恢复为默认值。",
-  "vanillashader.config.reset_look.confirm": "将曝光、饱和度、对比度、色温、大气、水面反射率和暗角恢复为默认值？"
+  "vanillashader.config.reset_look.confirm": "将曝光、饱和度、对比度、色温、大气、水面反射率和暗角恢复为默认值？",
+  "vanillashader.config.ray_tracing": "光线追踪照明",
+  "vanillashader.config.ray_tracing.tooltip": "在你周围的方块中追踪光线：黑曜石、金属、玻璃、冰和磨制石材上会出现光泽反射，熔岩、荧石和火焰会以自身颜色照亮周围，即使它们在画面之外。比其他效果更耗性能。"
 }

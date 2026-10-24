@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Tochas, lanternas, pedra luminosa e outras fontes de luz iluminam os arredores com uma luz suave e colorida: na mão de jogadores e criaturas, no chão ou colocadas no mundo. Criaturas que brilham também iluminam o mundo conforme o brilho delas: o batimento do Warden, um creeper prestes a explodir, os olhos do Enderman, Blazes, lulas-brilhantes, bolas de fogo e mais.",
   "vanillashader.config.reset_look": "Redefinir aparência",
   "vanillashader.config.reset_look.tooltip": "Volta todos os controles desta página ao valor padrão.",
-  "vanillashader.config.reset_look.confirm": "Redefinir exposição, saturação, contraste, calor, atmosfera, reflexividade da água e vinheta para os valores padrão?"
+  "vanillashader.config.reset_look.confirm": "Redefinir exposição, saturação, contraste, calor, atmosfera, reflexividade da água e vinheta para os valores padrão?",
+  "vanillashader.config.ray_tracing": "Iluminação com ray tracing",
+  "vanillashader.config.ray_tracing.tooltip": "Traça raios pelos blocos ao seu redor: reflexos brilhantes em obsidiana, metal, vidro, gelo e pedra polida, e lava, pedra luminosa e fogo tingem os arredores com a própria cor, mesmo fora da tela. Mais pesado que os outros efeitos."
 }

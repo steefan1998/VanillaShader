@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Les torches, lanternes, pierres lumineuses et autres sources de lumière éclairent leurs alentours d'une lumière douce et colorée : tenues par des joueurs et des créatures, posées au sol ou placées dans le monde. Les créatures lumineuses éclairent aussi le monde selon leur éclat : le battement de cœur du Warden, un creeper sur le point d'exploser, les yeux de l'Enderman, les Blazes, les calmars luisants, les boules de feu et plus encore.",
   "vanillashader.config.reset_look": "Réinitialiser l'apparence",
   "vanillashader.config.reset_look.tooltip": "Remettre tous les curseurs de cette page à leur valeur par défaut.",
-  "vanillashader.config.reset_look.confirm": "Remettre l'exposition, la saturation, le contraste, la chaleur, l'atmosphère, la réflectivité de l'eau et le vignettage à leurs valeurs par défaut ?"
+  "vanillashader.config.reset_look.confirm": "Remettre l'exposition, la saturation, le contraste, la chaleur, l'atmosphère, la réflectivité de l'eau et le vignettage à leurs valeurs par défaut ?",
+  "vanillashader.config.ray_tracing": "Éclairage par lancer de rayons",
+  "vanillashader.config.ray_tracing.tooltip": "Lance des rayons à travers les blocs autour de vous : reflets brillants sur l'obsidienne, le métal, le verre, la glace et la pierre polie, et la lave, la pierre lumineuse et le feu colorent leurs alentours, même hors de l'écran. Plus exigeant que les autres effets."
 }

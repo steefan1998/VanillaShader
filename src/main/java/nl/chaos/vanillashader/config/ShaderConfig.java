@@ -35,6 +35,7 @@ public final class ShaderConfig {
     public static final ModConfigSpec.BooleanValue FSR_ENABLED;
     public static final ModConfigSpec.IntValue FSR_SHARPNESS;
     public static final ModConfigSpec.BooleanValue DYNAMIC_LIGHTS;
+    public static final ModConfigSpec.BooleanValue RAY_TRACING;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -70,6 +71,11 @@ public final class ShaderConfig {
             .comment("Held and dropped light sources (torches, lanterns, glowstone, ...) and burning entities light up their surroundings.")
             .translation("vanillashader.config.dynamic_lights")
             .define("dynamicLights", true);
+
+        RAY_TRACING = builder
+            .comment("Ray-traced lighting: rays traced through the blocks around you for glossy reflections on obsidian, metal, glass and polished stone, and coloured light from lava, glowstone and fire on the surroundings. Heavier than the other effects.")
+            .translation("vanillashader.config.ray_tracing")
+            .define("rayTracing", false);
 
         WEATHER_INTEGRATION = builder
             .comment("Use WeatherStory's cloud cover and storm strength (when installed) to dim sun rays, glare and reflections.")

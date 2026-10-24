@@ -22,6 +22,7 @@ layout(std140) uniform Frame {
     vec4 DynLightPos[32];   // held, dropped and placed light sources: position relative to the camera, w = radius in blocks
     vec4 DynLightColor[32]; // rgb, w = intensity (0 = unused)
     vec4 Misc;          // x = highest terrain top around the camera, y = number of point lights
+    vec4 RayTracing;    // x = on, y = rays per pixel, z = ray length in blocks
 };
 
 vec3 viewPosFromDepth(vec2 uv, float depth) {

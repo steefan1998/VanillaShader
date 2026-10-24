@@ -28,7 +28,7 @@ import org.joml.Vector4f;
  * {@code shaders/include/frame.glsl}. Keep both in sync.
  */
 final class FrameState {
-    static final int SIZE = 3 * 64 + (20 + DynamicLights.MAX_LIGHTS * 2) * 16;
+    static final int SIZE = 3 * 64 + (21 + DynamicLights.MAX_LIGHTS * 2) * 16;
     static final int MAX_FLASHES = 4;
 
     private static final int[] AO_SAMPLES = {0, 4, 8, 10, 14};
@@ -51,8 +51,13 @@ final class FrameState {
     private final Vector4f fogParams = new Vector4f();
     private final DynamicLights dynamicLights = new DynamicLights();
     private final Vector4f misc = new Vector4f();
+    private final Vector4f rayTracing = new Vector4f();
+    private static final int[] RT_RAYS = {2, 2, 3, 4, 6};
     private DimensionType.Skybox skybox = DimensionType.Skybox.NONE;
     private float sunAngle;
+    private float endFlashIntensity;
+    private float endFlashXAngle;
+    private float endFlashYAngle;
     private float moonAngle;
     private int skyColor;
 
@@ -98,6 +103,9 @@ final class FrameState {
         skybox = skyState.skybox;
         sunAngle = skyState.sunAngle;
         moonAngle = skyState.moonAngle;
+        endFlashIntensity = skyState.endFlashIntensity;
+        endFlashXAngle = skyState.endFlashXAngle;
+        endFlashYAngle = skyState.endFlashYAngle;
         skyColor = skyState.skyColor;
     }
 
@@ -125,7 +133,9 @@ final class FrameState {
     void update(Minecraft minecraft, ShaderConfig.Effects effects, int width, int height, boolean hasWaterMask, boolean zZeroToOne, int minY, int maxTerrainY, int cloudShadowRange) {
         ClientLevel level = minecraft.level;
         float partialTick = minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false);
-        boolean overworld = skybox == DimensionType.Skybox.OVERWORLD;
+        // Sun effects in every dimension with daylight, modded ones included (Aether, Stellaris planets, ...), not just
+        // the Overworld. The Nether and the End have no sky light.
+        boolean overworld = level.dimensionType().hasSkyLight() && skybox != DimensionType.Skybox.END;
 
         projection.invert(inverseProjection);
         viewRotation.invert(inverseView);
@@ -135,10 +145,11 @@ final class FrameState {
         Vector3f sunWorld = new Quaternionf().rotationY((float) Math.toRadians(-90.0)).rotateX(sunAngle).transform(new Vector3f(0, 1, 0));
         Vector3f moonWorld = new Quaternionf().rotationY((float) Math.toRadians(-90.0)).rotateX(moonAngle).transform(new Vector3f(0, 1, 0));
         float dayFactor = Mth.clamp(sunWorld.y * 5.0F + 0.5F, 0.0F, 1.0F);
-        float sunset = (1.0F - smoothstep(0.0F, 0.4F, sunWorld.y)) * smoothstep(-0.15F, 0.0F, sunWorld.y);
+        float sunset = (1.0F - smoothstep(0.1F, 0.7F, sunWorld.y)) * smoothstep(-0.25F, -0.02F, sunWorld.y);
 
         boolean useSun = sunWorld.y > -0.05F || moonWorld.y < 0.0F;
         Vector3f lightWorld = useSun ? sunWorld : moonWorld;
+        boolean endFlash = false;
         float intensity = useSun
             ? Mth.clamp(sunWorld.y * 4.0F + 0.35F, 0.0F, 1.0F)
             : Mth.clamp(moonWorld.y * 2.0F, 0.0F, 1.0F) * 0.3F;
@@ -168,6 +179,17 @@ final class FrameState {
             intensity = 0.0F;
             sunset = 0.0F;
         }
+        // In the End, the sky flashes now and then: light (and shadows, god rays) from that direction while it lasts.
+        if (skybox == DimensionType.Skybox.END && endFlashIntensity > 0.01F && underwater < 1.5F) {
+            endFlash = true;
+            useSun = true;
+            lightWorld = new Quaternionf()
+                .rotationY((float) Math.toRadians(180.0F - endFlashYAngle))
+                .rotateX((float) Math.toRadians(-90.0F - endFlashXAngle))
+                .transform(new Vector3f(0, 1, 0));
+            intensity = Mth.clamp(endFlashIntensity, 0.0F, 1.0F) * 0.9F;
+            sunset = 0.0F;
+        }
 
         Vector3f lightView = viewRotation.transformDirection(new Vector3f(lightWorld)).normalize();
         lightDir.set(lightView.x, lightView.y, lightView.z, intensity);
@@ -189,12 +211,15 @@ final class FrameState {
         lightScreen.set(u, v, onScreen, (float) width / height);
 
         // Warm white at noon, orange at sunrise/sunset, cool blue for the moon.
-        Vector3f color = useSun
-            ? new Vector3f(1.0F, 0.94F, 0.84F).lerp(new Vector3f(1.0F, 0.52F, 0.22F), sunset)
-            : new Vector3f(0.55F, 0.65F, 1.0F);
+        Vector3f color = endFlash
+            ? new Vector3f(0.78F, 0.55F, 1.0F)
+            : useSun
+                ? new Vector3f(1.0F, 0.94F, 0.84F).lerp(new Vector3f(1.0F, 0.52F, 0.22F), sunset)
+                : new Vector3f(0.55F, 0.65F, 1.0F);
         lightColor.set(color.x, color.y, color.z, intensity);
 
-        sky.set(ARGB.redFloat(skyColor), ARGB.greenFloat(skyColor), ARGB.blueFloat(skyColor), dayFactor);
+        // Day factor only means something with a sun; elsewhere keep it at "day" so no night tint is applied.
+        sky.set(ARGB.redFloat(skyColor), ARGB.greenFloat(skyColor), ARGB.blueFloat(skyColor), overworld ? dayFactor : 1.0F);
 
         float skyLight = 1.0F;
         if (minecraft.gameRenderer.getMainCamera() != null) {
@@ -208,7 +233,7 @@ final class FrameState {
         weather.set(rain, overcast, sunset, underwater);
 
         quality0.set(AO_SAMPLES[effects.ambientOcclusion()], SSR_STEPS[effects.reflections()], SSR_REFINE[effects.reflections()], RAY_SAMPLES[effects.godRays()]);
-        quality1.set(SHADOW_STEPS[effects.shadows()], effects.bloom(), fogEnd, overworld ? 1.0F : 0.0F);
+        quality1.set(SHADOW_STEPS[effects.shadows()], effects.bloom(), fogEnd, overworld || endFlash ? 1.0F : 0.0F);
         look0.set(
             ShaderConfig.EXPOSURE.get() / 100.0F,
             ShaderConfig.SATURATION.get() / 100.0F,
@@ -239,6 +264,9 @@ final class FrameState {
         }
 
         misc.set(maxTerrainY, dynamicLights.count(), 0.0F, 0.0F);
+        // x = on, y = rays per pixel (follows the profile), z = how far rays travel in blocks.
+        boolean tracing = effects.enabled() && ShaderConfig.RAY_TRACING.get();
+        rayTracing.set(tracing ? 1.0F : 0.0F, RT_RAYS[Math.max(effects.reflections(), 0)], 28.0F, 0.0F);
 
         // Vanilla lightning bolts (also the ones WeatherStory strikes on the ground) fill the remaining slots.
         int slot = 0;
@@ -291,6 +319,7 @@ final class FrameState {
             builder.putVec4(used ? dynamicLights.get(i, 4) : 0.0F, used ? dynamicLights.get(i, 5) : 0.0F, used ? dynamicLights.get(i, 6) : 0.0F, used ? dynamicLights.get(i, 7) : 0.0F);
         }
         builder.putVec4(misc);
+        builder.putVec4(rayTracing);
     }
 
     private static float smoothstep(float edge0, float edge1, float x) {

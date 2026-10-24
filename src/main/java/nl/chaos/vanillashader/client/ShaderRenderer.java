@@ -58,7 +58,9 @@ public final class ShaderRenderer {
     private static final RenderPipeline POINT_LIGHTS = pipeline("point_lights", "Depth", "ShadowMap");
     private static final RenderPipeline WATER = pipeline("water", "Scene", "Depth", "OpaqueDepth", "ShadowMap");
     private static final RenderPipeline DENOISE = pipeline("denoise", "In", "Guide");
-    private static final RenderPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap");
+    private static final RenderPipeline RT_LIGHT = pipeline("rt_light", "Depth", "Volume");
+    private static final RenderPipeline RT_REFLECT = pipeline("rt_reflect", "Scene", "Depth", "Volume");
+    private static final RenderPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect");
     private static final RenderPipeline BRIGHT = pipeline("bloom_bright", "In");
     private static final RenderPipeline BLUR = pipeline("blur", "In");
     private static final RenderPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth");
@@ -73,6 +75,9 @@ public final class ShaderRenderer {
     private static final Texture LIGHTING_TMP = new Texture("lighting_tmp", 2);
     private static final Texture POINT_LIGHTS_TMP = new Texture("point_lights_tmp", 2);
     private static final Texture RAYS_TMP = new Texture("rays_tmp", 2);
+    private static final Texture RT_LIGHT_TEX = new Texture("rt_light", 2);
+    private static final Texture RT_LIGHT_TMP = new Texture("rt_light_tmp", 2);
+    private static final Texture RT_REFLECT_TEX = new Texture("rt_reflect", 2);
     private static final Texture RAYS = new Texture("rays", 2);
     private static final Texture BLOOM_NEAR = new Texture("bloom_near", 4);
     private static final Texture BLOOM_NEAR_TMP = new Texture("bloom_near_tmp", 4);
@@ -84,12 +89,13 @@ public final class ShaderRenderer {
     // and sand wisps (drawn without depth), so lighting can be kept off the veil in front of the terrain.
     private static final Texture OPAQUE_COLOR = new Texture("opaque_color", 1);
     private static final Texture FEATURE_COLOR = new Texture("feature_color", 1);
-    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
+    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RT_LIGHT_TEX, RT_LIGHT_TMP, RT_REFLECT_TEX, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
     private static final DepthCopy OPAQUE_DEPTH = new DepthCopy("opaque_depth");
     private static final DepthCopy FULL_DEPTH = new DepthCopy("full_depth");
 
     private static final FrameState FRAME = new FrameState();
     private static final ShadowHeightmap SHADOW_MAP = new ShadowHeightmap();
+    private static final MaterialVolume VOLUME = new MaterialVolume();
     private static @Nullable MappableRingBuffer frameUniforms;
     private static @Nullable GpuBuffer blurHorizontal;
     private static @Nullable GpuBuffer blurVertical;
@@ -297,6 +303,34 @@ public final class ShaderRenderer {
             encoder.clearColorTexture(WATER_TEX.texture, 0);
         }
 
+        // Ray-traced lighting: rays through a voxel copy of the nearby blocks for light from emissive blocks and
+        // reflections on glossy ones.
+        boolean tracing = ShaderConfig.RAY_TRACING.get();
+        if (tracing) {
+            long start = System.nanoTime();
+            VOLUME.update(minecraft.level, minecraft.gameRenderer.getMainCamera().position());
+            PassTimer.cpu("material volume", start);
+        }
+        GpuTextureView volume = VOLUME.view() != null ? VOLUME.view() : BLACK.view;
+        if (tracing && usable(RT_LIGHT)) {
+            draw(encoder, RT_LIGHT, RT_LIGHT_TEX.view, frame, null,
+                new Input("Depth", FULL_DEPTH.view, nearest),
+                new Input("Volume", volume, nearest));
+            if (usable(DENOISE)) {
+                denoise(encoder, RT_LIGHT_TEX, RT_LIGHT_TMP, LIGHTING_TEX, false);
+            }
+        } else {
+            encoder.clearColorTexture(RT_LIGHT_TEX.texture, 0);
+        }
+        if (tracing && usable(RT_REFLECT)) {
+            draw(encoder, RT_REFLECT, RT_REFLECT_TEX.view, frame, null,
+                new Input("Scene", scene, linear),
+                new Input("Depth", FULL_DEPTH.view, nearest),
+                new Input("Volume", volume, nearest));
+        } else {
+            encoder.clearColorTexture(RT_REFLECT_TEX.texture, 0);
+        }
+
         if (usable(COMPOSITE)) {
             draw(encoder, COMPOSITE, LIT.view, frame, null,
                 new Input("Scene", scene, linear),
@@ -308,7 +342,9 @@ public final class ShaderRenderer {
                 // Without both snapshots, comparing a texture with itself means "no veil anywhere".
                 new Input("OpaqueColor", featureColorCaptured ? OPAQUE_COLOR.view : scene, nearest),
                 new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.view : scene, nearest),
-                new Input("ShadowMap", heights, nearest));
+                new Input("ShadowMap", heights, nearest),
+                new Input("RtLight", RT_LIGHT_TEX.view, nearest),
+                new Input("RtReflect", RT_REFLECT_TEX.view, linear));
         } else {
             // Bloom, god rays and grading still work on the plain level.
             encoder.copyTextureToTexture(main.getColorTexture(), LIT.texture, 0, 0, 0, 0, 0, width, height);

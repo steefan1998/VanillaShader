@@ -220,6 +220,23 @@ final class DynamicLights {
         return null;
     }
 
+    /** Palette index of a light colour, matching voxels.glsl: warm, soul, redstone, cool, golden, lava. */
+    static int colorIndex(Vector3f color) {
+        if (color == SOUL) {
+            return 1;
+        }
+        if (color == REDSTONE) {
+            return 2;
+        }
+        if (color == COOL) {
+            return 3;
+        }
+        if (color == GOLDEN) {
+            return 4;
+        }
+        return color == LAVA ? 5 : 0;
+    }
+
     static boolean flickers(Vector3f color) {
         return color == WARM || color == SOUL || color == LAVA;
     }

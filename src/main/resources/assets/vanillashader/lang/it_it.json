@@ -72,5 +72,7 @@
   "vanillashader.config.dynamic_lights.tooltip": "Torce, lanterne, pietra luminosa e altre fonti di luce illuminano i dintorni con una luce morbida e colorata: in mano a giocatori e creature, a terra o piazzate nel mondo. Anche le creature luminose illuminano il mondo in base al loro bagliore: il battito del Warden, un creeper che sta per esplodere, gli occhi dell'Enderman, i Blaze, i calamari luminosi, le palle di fuoco e altro.",
   "vanillashader.config.reset_look": "Ripristina aspetto",
   "vanillashader.config.reset_look.tooltip": "Riporta tutti i cursori di questa pagina al valore predefinito.",
-  "vanillashader.config.reset_look.confirm": "Ripristinare esposizione, saturazione, contrasto, calore, atmosfera, riflettività dell'acqua e vignettatura ai valori predefiniti?"
+  "vanillashader.config.reset_look.confirm": "Ripristinare esposizione, saturazione, contrasto, calore, atmosfera, riflettività dell'acqua e vignettatura ai valori predefiniti?",
+  "vanillashader.config.ray_tracing": "Illuminazione ray tracing",
+  "vanillashader.config.ray_tracing.tooltip": "Traccia raggi attraverso i blocchi intorno a te: riflessi lucidi su ossidiana, metallo, vetro, ghiaccio e pietra levigata, e lava, pietra luminosa e fuoco colorano i dintorni con il loro colore, anche fuori dallo schermo. Più pesante degli altri effetti."
 }
