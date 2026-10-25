@@ -31,6 +31,12 @@ void main() {
     int rays = int(RayTracing.y);
     float noise = gradientNoise(gl_FragCoord.xy);
     vec3 light = vec3(0.0);
+    // A wall right behind a torch starts its rays inside the torch's own cell, which the trace steps out of
+    // without seeing; count that cell as fully in view.
+    vec3 start = voxelAt(origin);
+    if (start.x == MATERIAL_EMISSIVE) {
+        light = emissionColor(start.z) * (start.y / 15.0) * 6.0 * float(rays);
+    }
     for (int i = 0; i < rays; i++) {
         // Cosine-weighted spiral over the hemisphere around the normal.
         float f = (float(i) + noise) / float(rays);

@@ -181,8 +181,10 @@ void main() {
             vec3 neighbour = texture(SceneSampler, texCoord + offset).rgb;
             surroundings += max(neighbour.r, max(neighbour.g, neighbour.b));
         }
-        float gain = min(0.6 / max(surroundings * 0.25, 0.04), 8.0);
-        color += color * gain * handLight * (1.0 - luma(color)) * 1.5;
+        float gain = min(0.6 / max(surroundings * 0.25, 0.04), 4.0);
+        // Saturating curve: right next to a light it levels off instead of blowing the surface out to white.
+        vec3 added = handLight / (1.0 + handLight);
+        color += color * gain * added * (1.0 - luma(color)) * 1.5;
     }
 
     // Looking into a low sun, everything shows its shaded side: terrain becomes a dark silhouette against the sky.

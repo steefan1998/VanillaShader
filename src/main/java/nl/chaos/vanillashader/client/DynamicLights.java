@@ -19,6 +19,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import nl.chaos.vanillashader.config.ShaderConfig;
 import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 
@@ -90,6 +91,10 @@ final class DynamicLights {
         List<BlockLights.Light> placed = new ArrayList<>();
         blockLights.addTo(placed);
         placed.removeIf(light -> distanceSqr(light, camera) > BLOCK_RANGE * BLOCK_RANGE);
+        // Ray-traced lighting already lights the world from placed light blocks; adding them here too doubles it.
+        if (ShaderConfig.RAY_TRACING.get()) {
+            placed.clear();
+        }
         placed.sort(Comparator.comparingDouble(light -> distanceSqr(light, camera)));
         for (BlockLights.Light light : placed) {
             if (count >= MAX_LIGHTS) {
