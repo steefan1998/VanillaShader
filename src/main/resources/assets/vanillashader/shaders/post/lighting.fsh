@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 // Half-resolution lighting: R = ambient occlusion, G = sun visibility (sun shadows, contact shadows and

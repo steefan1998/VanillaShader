@@ -12,3 +12,6 @@ runs/
 .idea/
 *.iml
 .vscode/
+
+# Native libraries LWJGL unpacks when validateShaders runs
+.lwjgl/

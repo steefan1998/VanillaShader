@@ -19,15 +19,17 @@ import nl.chaos.vanillashader.client.DevCapture;
 import nl.chaos.vanillashader.client.ShaderRenderer;
 import nl.chaos.vanillashader.config.Profile;
 import nl.chaos.vanillashader.config.ShaderConfig;
-import org.lwjgl.glfw.GLFW;
 
 @Mod(value = VanillaShader.MOD_ID, dist = Dist.CLIENT)
 public final class VanillaShader {
     public static final String MOD_ID = "vanillashader";
 
+    //? if >=26.1 {
     private static final KeyMapping.Category KEY_CATEGORY = new KeyMapping.Category(id("keys"));
+    //?} else
+    /*private static final String KEY_CATEGORY = "key.category.vanillashader.keys";*/
     private static final KeyMapping CYCLE_PROFILE = new KeyMapping(
-        "key.vanillashader.cycle_profile", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F6, KEY_CATEGORY
+        "key.vanillashader.cycle_profile", InputConstants.Type.KEYSYM, InputConstants.KEY_F6, KEY_CATEGORY
     );
 
     public VanillaShader(IEventBus modBus, ModContainer container) {
@@ -45,6 +47,7 @@ public final class VanillaShader {
     }
 
     private static void registerKeys(RegisterKeyMappingsEvent event) {
+        //? if >=26.1
         event.registerCategory(KEY_CATEGORY);
         event.register(CYCLE_PROFILE);
     }
@@ -55,7 +58,10 @@ public final class VanillaShader {
             Profile next = ShaderConfig.PROFILE.get().next();
             ShaderConfig.setProfile(next);
             if (minecraft.player != null) {
+                //? if >=26.1 {
                 minecraft.player.sendOverlayMessage(Component.translatable("vanillashader.message.profile", next.displayName()));
+                //?} else
+                /*minecraft.player.displayClientMessage(Component.translatable("vanillashader.message.profile", next.displayName()), true);*/
             }
         }
     }

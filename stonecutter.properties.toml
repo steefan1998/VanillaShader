@@ -1,0 +1,32 @@
+mod.id = "vanillashader"
+mod.name = "Vanilla Shader"
+mod.version = "1.1.0"
+mod.group = "nl.chaos.vanillashader"
+mod.authors = "Stefan / Claude Code"
+mod.description = "Vibrant-style visuals (bloom, god rays, water reflections, color grading) with Low/Medium/High/Max quality profiles."
+
+# Per version: the accepted Minecraft/NeoForge range in neoforge.mods.toml, the NeoForge to build against and the
+# Sodium release whose config API we compile against (and which dev runs load).
+["1.21.1"]
+mod.mc_range = "[1.21.1]"
+deps.neoforge = "21.1.265"
+deps.neoforge_range = "[21.1.200,)"
+deps.sodium = "mc1.21.1-0.8.13-neoforge"
+
+["26.1.2"]
+mod.mc_range = "[26.1.2,26.2)"
+deps.neoforge = "26.1.2.122"
+deps.neoforge_range = "[26.1.2,)"
+deps.sodium = "mc26.1.2-0.9.2-neoforge"
+
+["26.2"]
+mod.mc_range = "[26.2,26.3)"
+deps.neoforge = "26.2.0.93"
+deps.neoforge_range = "[26.2.0.93,)"
+deps.sodium = "mc26.2-0.9.2-neoforge"
+
+["26.3"]
+mod.mc_range = "[26.3,26.4)"
+deps.neoforge = "26.3.0.99"
+deps.neoforge_range = "[26.3.0.99,)"
+deps.sodium = "mc26.3-0.9.3-beta.1-neoforge"

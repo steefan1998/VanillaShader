@@ -2,10 +2,9 @@
   "required": true,
   "minVersion": "0.8",
   "package": "nl.chaos.vanillashader.mixin",
-  "compatibilityLevel": "JAVA_25",
+  "compatibilityLevel": "${mixin_java}",
   "client": [
-    "GameRendererMixin",
-    "MinecraftAccessor"
+    ${client_mixins}
   ],
   "injectors": {
     "defaultRequire": 1

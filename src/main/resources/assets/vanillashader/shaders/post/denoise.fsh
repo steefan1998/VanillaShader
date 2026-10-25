@@ -1,6 +1,6 @@
 #version 330
 
-#moj_import <vanillashader:frame.glsl>
+#moj_import <vanillashader:common.glsl>
 
 // One direction of a depth-aware blur over the half-resolution lighting buffers. It smooths the per-pixel jitter
 // of AO, soft shadows and light occlusion without letting light or shadow cross depth edges.

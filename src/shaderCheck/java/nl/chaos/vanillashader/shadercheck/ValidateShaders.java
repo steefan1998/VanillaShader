@@ -44,7 +44,7 @@ public final class ValidateShaders {
     );
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
     private static final Pattern COMMENTS = Pattern.compile("//[^\\n]*|/\\*.*?\\*/", Pattern.DOTALL);
-    private static final Pattern IMPORT = Pattern.compile("#moj_import <([a-z0-9_]+):([a-z0-9_/.]+)>");
+    private static final Pattern IMPORT = Pattern.compile("#(?:moj_import|include) <([a-z0-9_]+):([a-z0-9_/.]+)>");
 
     private ValidateShaders() {
     }
@@ -62,6 +62,9 @@ public final class ValidateShaders {
         shaderc_compile_options_set_auto_map_locations(options, true);
         shaderc_compile_options_set_auto_bind_uniforms(options, true);
         shaderc_compile_options_set_forced_version_profile(options, 330, shaderc_profile_core);
+        // Minecraft 26.2+ compiles our shaders with this define (reversed depth); check that variant too.
+        long reversedZ = shaderc_compile_options_clone(options);
+        shaderc_compile_options_add_macro_definition(reversedZ, "VANILLASHADER_REVERSED_Z", "1");
 
         int failures = 0;
         for (Path file : fragments) {
@@ -88,10 +91,20 @@ public final class ValidateShaders {
             shaderc_result_release(result);
         }
         shaderc_compile_options_release(options);
+        shaderc_compile_options_release(reversedZ);
         shaderc_compiler_release(compiler);
 
         if (failures > 0) {
             throw new IllegalStateException(failures + " shader(s) failed to compile");
+        }
+    }
+
+    private static String compileError(long compiler, String source, Path file, long options) {
+        long result = shaderc_compile_into_spv(compiler, source, shaderc_fragment_shader, file.getFileName().toString(), "main", options);
+        try {
+            return shaderc_result_get_compilation_status(result) == shaderc_compilation_status_success ? null : shaderc_result_get_error_message(result);
+        } finally {
+            shaderc_result_release(result);
         }
     }
 

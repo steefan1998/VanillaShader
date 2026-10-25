@@ -1,20 +1,27 @@
 package nl.chaos.vanillashader.client;
 
-import com.mojang.blaze3d.buffers.Std140Builder;
 import java.util.Arrays;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+//? if >=26.1 {
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
 import net.minecraft.util.ARGB;
+import net.minecraft.world.level.dimension.DimensionType;
+//?} else {
+/*import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Camera;
+import net.minecraft.client.renderer.DimensionSpecialEffects;
+*///?}
+import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.phys.Vec3;
+import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
 import nl.chaos.vanillashader.config.ShaderConfig;
 import org.joml.Matrix4f;
@@ -53,13 +60,13 @@ final class FrameState {
     private final Vector4f misc = new Vector4f();
     private final Vector4f rayTracing = new Vector4f();
     private static final int[] RT_RAYS = {2, 2, 3, 4, 6};
-    private DimensionType.Skybox skybox = DimensionType.Skybox.NONE;
+    private boolean endSky;
     private float sunAngle;
     private float endFlashIntensity;
     private float endFlashXAngle;
     private float endFlashYAngle;
     private float moonAngle;
-    private int skyColor;
+    private final Vector3f skyColor = new Vector3f();
 
     // Derived in update().
     private final Matrix4f inverseProjection = new Matrix4f();
@@ -87,6 +94,7 @@ final class FrameState {
         levelProjectionValid = true;
     }
 
+    //? if >=26.1 {
     void capture(LevelRenderState state) {
         CameraRenderState cam = state.cameraRenderState;
         // Prefer the projection actually used this frame (with view bobbing); fall back to the plain camera one.
@@ -100,14 +108,46 @@ final class FrameState {
         fogEnd = Math.max(8.0F, Math.min(cam.fogData.renderDistanceEnd, cam.fogData.environmentalEnd));
         fogParams.set(cam.fogData.environmentalStart, cam.fogData.environmentalEnd, cam.fogData.renderDistanceStart, cam.fogData.renderDistanceEnd);
         SkyRenderState skyState = state.skyRenderState;
-        skybox = skyState.skybox;
+        endSky = skyState.skybox == DimensionType.Skybox.END;
         sunAngle = skyState.sunAngle;
         moonAngle = skyState.moonAngle;
         endFlashIntensity = skyState.endFlashIntensity;
         endFlashXAngle = skyState.endFlashXAngle;
         endFlashYAngle = skyState.endFlashYAngle;
-        skyColor = skyState.skyColor;
+        //? if >=26.3 {
+        /*// Null in skies without one (the End) and before the sky is first set up; black, like the int it replaced.
+        if (skyState.skyColor != null) {
+            skyColor.set(skyState.skyColor);
+        } else {
+            skyColor.set(0.0F);
+        }
+        *///?} else
+        skyColor.set(ARGB.redFloat(skyState.skyColor), ARGB.greenFloat(skyState.skyColor), ARGB.blueFloat(skyState.skyColor));
     }
+    //?} else {
+    /*// 1.21.1 has no level render state: read the camera, the fog Minecraft set up for the terrain, and the level.
+    void capture(Camera camera, Matrix4fc cameraProjection, Matrix4fc viewRotationMatrix, ClientLevel level, float partialTick) {
+        projection.set(levelProjectionValid ? levelProjection : cameraProjection);
+        levelProjectionValid = false;
+        viewRotation.set(viewRotationMatrix);
+        cameraPos = camera.getPosition();
+        fogType = camera.getFluidInCamera();
+        float[] fog = RenderSystem.getShaderFogColor();
+        fogColor.set(fog[0], fog[1], fog[2], fog[3]);
+        // 1.21.1 has one fog range for everything.
+        float fogStart = RenderSystem.getShaderFogStart();
+        float fogFar = RenderSystem.getShaderFogEnd();
+        fogEnd = Math.max(8.0F, fogFar);
+        fogParams.set(fogStart, fogFar, fogStart, fogFar);
+        endSky = level.effects().skyType() == DimensionSpecialEffects.SkyType.END;
+        sunAngle = level.getSunAngle(partialTick);
+        moonAngle = sunAngle + Mth.PI;
+        // The End only flashes from 1.21.9.
+        endFlashIntensity = 0.0F;
+        Vec3 color = level.getSkyColor(cameraPos, partialTick);
+        skyColor.set((float) color.x, (float) color.y, (float) color.z);
+    }
+    *///?}
 
     /** Fog much nearer than the render distance: WeatherStory mist or sand, so its wisps may be on screen. */
     boolean fogIsClose() {
@@ -135,7 +175,7 @@ final class FrameState {
         float partialTick = minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false);
         // Sun effects in every dimension with daylight, modded ones included (Aether, Stellaris planets, ...), not just
         // the Overworld. The Nether and the End have no sky light.
-        boolean overworld = level.dimensionType().hasSkyLight() && skybox != DimensionType.Skybox.END;
+        boolean overworld = level.dimensionType().hasSkyLight() && !endSky;
 
         projection.invert(inverseProjection);
         viewRotation.invert(inverseView);
@@ -174,13 +214,17 @@ final class FrameState {
         float sunBlock = cloudShadowRange > 0 ? Math.max(Math.max(rain, thunder), Math.max(storm, 0.0F)) : overcast;
         intensity *= 1.0F - 0.85F * sunBlock;
 
-        float underwater = fogType == FogType.WATER ? 1.0F : fogType == FogType.NONE || fogType == FogType.ATMOSPHERIC ? 0.0F : 2.0F;
+        //? if >=26.1 {
+        boolean clearAir = fogType == FogType.NONE || fogType == FogType.ATMOSPHERIC;
+        //?} else
+        /*boolean clearAir = fogType == FogType.NONE;*/
+        float underwater = fogType == FogType.WATER ? 1.0F : clearAir ? 0.0F : 2.0F;
         if (!overworld || underwater > 1.5F) {
             intensity = 0.0F;
             sunset = 0.0F;
         }
         // In the End, the sky flashes now and then: light (and shadows, god rays) from that direction while it lasts.
-        if (skybox == DimensionType.Skybox.END && endFlashIntensity > 0.01F && underwater < 1.5F) {
+        if (endSky && endFlashIntensity > 0.01F && underwater < 1.5F) {
             endFlash = true;
             useSun = true;
             lightWorld = new Quaternionf()
@@ -219,11 +263,11 @@ final class FrameState {
         lightColor.set(color.x, color.y, color.z, intensity);
 
         // Day factor only means something with a sun; elsewhere keep it at "day" so no night tint is applied.
-        sky.set(ARGB.redFloat(skyColor), ARGB.greenFloat(skyColor), ARGB.blueFloat(skyColor), overworld ? dayFactor : 1.0F);
+        sky.set(skyColor.x, skyColor.y, skyColor.z, overworld ? dayFactor : 1.0F);
 
         float skyLight = 1.0F;
-        if (minecraft.gameRenderer.getMainCamera() != null) {
-            skyLight = level.getBrightness(LightLayer.SKY, minecraft.gameRenderer.getMainCamera().blockPosition()) / 15.0F;
+        if (McCompat.camera() != null) {
+            skyLight = level.getBrightness(LightLayer.SKY, BlockPos.containing(McCompat.cameraPosition())) / 15.0F;
         }
         smoothedSkyLight = Mth.lerp(0.05F, smoothedSkyLight, skyLight);
         horizon.set(fogColor.x, fogColor.y, fogColor.z, overworld ? smoothedSkyLight : 0.0F);
@@ -288,7 +332,7 @@ final class FrameState {
         }
     }
 
-    void write(Std140Builder builder) {
+    void write(Std140 builder) {
         builder.putMat4f(projection)
             .putMat4f(inverseProjection)
             .putMat4f(inverseView)

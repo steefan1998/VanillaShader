@@ -9,9 +9,21 @@ import net.minecraft.client.server.IntegratedServer;
 import net.neoforged.neoforge.client.ClientCommandHandler;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.config.Profile;
 import nl.chaos.vanillashader.config.ShaderConfig;
 import org.slf4j.Logger;
+//? if <26.1 {
+/*import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.world.Difficulty;
+import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.LevelSettings;
+import net.minecraft.world.level.WorldDataConfiguration;
+import net.minecraft.world.level.levelgen.WorldOptions;
+import net.minecraft.world.level.levelgen.presets.WorldPresets;
+*///?}
 
 /**
  * Development aid, off unless {@code -Dvanillashader.devCapture=true} is set. Once a singleplayer world is
@@ -37,6 +49,8 @@ public final class DevCapture {
     private static int shot;
     private static boolean pendingShot;
     private static Profile originalProfile;
+    //? if <26.1
+    /*private static boolean creatingWorld;*/
 
     private DevCapture() {
     }
@@ -56,6 +70,16 @@ public final class DevCapture {
 
     private static void tick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
+        //? if <26.1 {
+        /*// -Dvanillashader.devCapture.newWorldSeed=<seed>: worlds from newer versions cannot be opened here, so when the
+        // quick-play world is missing (an error screen), create it: creative, peaceful, commands allowed.
+        Long seed = Long.getLong("vanillashader.devCapture.newWorldSeed");
+        if (seed != null && !creatingWorld && minecraft.level == null && minecraft.screen instanceof DisconnectedScreen) {
+            creatingWorld = true;
+            LevelSettings settings = new LevelSettings("world", GameType.CREATIVE, false, Difficulty.PEACEFUL, true, new GameRules(), WorldDataConfiguration.DEFAULT);
+            minecraft.createWorldOpenFlows().createFreshLevel("world", settings, new WorldOptions(seed, true, false), WorldPresets::createNormalWorldDimensions, new TitleScreen());
+        }
+        *///?}
         IntegratedServer server = minecraft.getSingleplayerServer();
         if (minecraft.player == null || server == null || scene >= scenes.length) {
             return;
@@ -115,7 +139,10 @@ public final class DevCapture {
         pendingShot = false;
         Minecraft minecraft = Minecraft.getInstance();
         String name = "vanillashader_" + scene + "_" + shot + "_" + PROFILES[shot].name().toLowerCase(Locale.ROOT) + ".png";
-        Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(), 1, message -> LOGGER.info("Dev capture: {}", message.getString()));
+        //? if >=26.1 {
+        Screenshot.grab(minecraft.gameDirectory, name, McCompat.mainTarget(), 1, message -> LOGGER.info("Dev capture: {}", message.getString()));
+        //?} else
+        /*Screenshot.grab(minecraft.gameDirectory, name, McCompat.mainTarget(), message -> LOGGER.info("Dev capture: {}", message.getString()));*/
         shot++;
         if (shot >= PROFILES.length) {
             shot = 0;

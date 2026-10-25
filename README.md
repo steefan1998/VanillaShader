@@ -1,6 +1,6 @@
 # Vanilla Shader
 
-A NeoForge mod for Minecraft **26.1.2** that gives the game a vibrant, shader-like look while staying compatible
+A NeoForge mod for Minecraft **1.21.1, 26.1.2, 26.2 and 26.3** that gives the game a vibrant, shader-like look while staying compatible
 with **Sodium** and **WeatherStory**. Everything is post-processing on top of the normal renderer, so no shader pack
 loader is needed.
 
@@ -31,7 +31,7 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
   - under water: caustics, depth tint and a gentle wobble.
 - **Light and atmosphere:** ambient occlusion, bloom, god rays, a sun-tinted haze over distant terrain, colour grading and a vignette.
 - **Golden hour:** at sunrise and sunset the sky and clouds turn amber around a glowing sun, the light turns orange and terrain facing away from the sun becomes a dark silhouette. Rain and thick fog tone it down.
-- **Ray-traced lighting** (optional toggle, off by default): rays traced through a voxel copy of the blocks around you. Lava, glowstone, fire and other light blocks light up their surroundings in their own colour, also from off screen, and obsidian, metal blocks, glass, ice and polished stone get glossy reflections. This is not hardware ray tracing (RTX): Minecraft 26.1.2 only has OpenGL, which has no access to RT cores.
+- **Ray-traced lighting** (optional toggle, off by default): rays traced through a voxel copy of the blocks around you. Lava, glowstone, fire and other light blocks light up their surroundings in their own colour, also from off screen, and obsidian, metal blocks, glass, ice and polished stone get glossy reflections. This is not hardware ray tracing (RTX): the rays run in an ordinary shader, on OpenGL and Vulkan alike.
 - **Dimensions:** the Nether and the End get their own treatment (no sun effects, the End sky flashes light the world). Modded dimensions such as The Aether II or Stellaris are handled the same way, by whether they have a sun; they are not tested separately.
 - **Dynamic lighting:** smooth, coloured light from:
   - torches, lanterns, glowstone and other light sources, whether held, dropped or placed;
@@ -44,8 +44,18 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
 
 ## Requirements
 
-- Minecraft 26.1.2 with NeoForge 26.1.2.122 or newer
-- Optional: [Sodium](https://modrinth.com/mod/sodium) 0.9.2+ and WeatherStory 0.9.1+
+There is a separate jar for each Minecraft version (`vanillashader-<version>+mc<minecraft>.jar`):
+
+| Minecraft | NeoForge | Sodium (optional) | Notes |
+|---|---|---|---|
+| 1.21.1 | 21.1.200 or newer | 0.8.13+ | WeatherStory is not available |
+| 26.1.2 | 26.1.2.122 or newer | 0.9.2+ | WeatherStory 0.9.1+ (optional) |
+| 26.2 | 26.2.0.93 or newer | 0.9.2+ | |
+| 26.3 | 26.3.0.99 or newer | 0.9.3+ | Works with Improved Transparency on or off |
+
+On 26.2 and 26.3 the mod works with both graphics APIs, OpenGL and Vulkan. On 26.2, NeoForge itself can only start
+with Vulkan when its early loading screen is off (`earlyWindowControl = false` in `config/fml.toml`); that is not
+specific to this mod.
 
 The mod turns itself off while an Iris shader pack is active.
 
@@ -55,16 +65,22 @@ The mod turns itself off while an Iris shader pack is active.
 ./gradlew build
 ```
 
-The jar ends up in `build/libs/`. Java 25 is downloaded automatically through the Gradle toolchain.
+The build uses [Stonecutter](https://stonecutter.kikugie.dev/): one source tree, built once per Minecraft version, with
+`//?` comments where versions differ (versions and their dependencies are in `stonecutter.properties.toml`). The jars
+end up in `versions/<minecraft>/build/libs/`. Java 25 (26.x) and Java 21 (1.21.1) are downloaded automatically
+through the Gradle toolchain. The GPU code (`client/gpu`) uses Minecraft's own GPU API on 26.x and plain OpenGL on
+1.21.1 (`src/gl`); the shaders are shared.
 
-For development, `./gradlew runClient -PdevCapture=...` loads `run/saves/world` and saves a screenshot per profile.
+For development, `./gradlew :<minecraft>:runClient -PdevCapture=...` loads `saves/world` from the run folder (`run/`
+for 26.1.2, `runs/<minecraft>/` for the others) and saves a screenshot per profile. On 1.21.1, add
+`-Pjvm.vanillashader.devCapture.newWorldSeed=<seed>` to create that world first.
 Add `-Pjvm.vanillashader.profilePasses=true` to log GPU timings for every pass. See `DevCapture` and `PassTimer`.
 
 ## Notes
 
 - **GPU compatibility:** shaders stick to strict GLSL 3.30 and are checked at build time (`./gradlew validateShaders`, part of `check`) with glslang plus a check for names NVIDIA and Intel reject. If a shader still fails on some driver, only that effect turns off and the log names it; the game keeps running.
 - **GPU choice on laptops:** with both an integrated and a dedicated GPU, make sure Java (`javaw.exe`) runs on the dedicated one, under Windows Settings → Display → Graphics. Otherwise performance is much lower.
-- **No Vulkan, no DLSS:** Minecraft 26.1.2 only has an OpenGL renderer, and DLSS does not support OpenGL.
+- **No DLSS:** DLSS needs hardware and SDKs Minecraft does not expose, on OpenGL or Vulkan; FSR 1 is used instead.
 
 ## Credits
 

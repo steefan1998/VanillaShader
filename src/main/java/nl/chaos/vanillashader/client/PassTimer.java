@@ -1,7 +1,5 @@
 package nl.chaos.vanillashader.client;
 
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.GpuQuery;
 import com.mojang.logging.LogUtils;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -9,6 +7,7 @@ import java.util.Map;
 import java.util.OptionalLong;
 import java.util.TreeMap;
 import net.minecraft.client.Minecraft;
+import nl.chaos.vanillashader.client.gpu.Gpu;
 import nl.chaos.vanillashader.config.ShaderConfig;
 import org.slf4j.Logger;
 
@@ -29,15 +28,15 @@ final class PassTimer {
     private PassTimer() {
     }
 
-    static Timing gpu(CommandEncoder encoder, String label) {
+    static Timing gpu(String label) {
         if (!ENABLED) {
             return () -> {
             };
         }
-        GpuQuery query = encoder.timerQueryBegin();
+        Gpu.Timer timer = Gpu.startTimer();
         return () -> {
-            encoder.timerQueryEnd(query);
-            PENDING.add(new Pending(label, query));
+            timer.stop();
+            PENDING.add(new Pending(label, timer));
         };
     }
 
@@ -55,13 +54,13 @@ final class PassTimer {
         frames++;
         while (!PENDING.isEmpty()) {
             Pending pending = PENDING.peek();
-            OptionalLong value = pending.query.getValue();
+            OptionalLong value = pending.timer.nanos();
             if (value.isEmpty()) {
                 break;
             }
             PENDING.poll();
             add(pending.label, value.getAsLong());
-            pending.query.close();
+            pending.timer.close();
         }
         long now = System.nanoTime();
         if (now - lastReport >= REPORT_NANOS) {
@@ -92,6 +91,6 @@ final class PassTimer {
         void close();
     }
 
-    private record Pending(String label, GpuQuery query) {
+    private record Pending(String label, Gpu.Timer timer) {
     }
 }

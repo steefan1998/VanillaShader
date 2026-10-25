@@ -1,11 +1,5 @@
 package nl.chaos.vanillashader.client;
 
-import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.GpuDevice;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import java.nio.ByteBuffer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -16,6 +10,9 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
+import nl.chaos.vanillashader.client.gpu.PostTexture;
+import nl.chaos.vanillashader.compat.McCompat;
+import nl.chaos.vanillashader.client.gpu.TexRef;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 
@@ -33,16 +30,15 @@ final class ShadowHeightmap {
     static final int SIZE = 512;
     private static final int ROWS_PER_FRAME = 16;
 
-    private @Nullable GpuTexture texture;
-    private @Nullable GpuTextureView view;
+    private @Nullable PostTexture texture;
     private @Nullable ByteBuffer band;
     private int nextRow;
     private int minY;
     // Highest top per texture row, so sun rays can stop as soon as they are above all terrain.
     private final int[] rowMaxTop = new int[SIZE];
 
-    @Nullable GpuTextureView view() {
-        return view;
+    @Nullable TexRef ref() {
+        return texture != null ? texture.ref() : null;
     }
 
     int minY() {
@@ -62,18 +58,16 @@ final class ShadowHeightmap {
         if (level == null) {
             return;
         }
-        GpuDevice device = RenderSystem.getDevice();
         if (texture == null) {
-            int usage = GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
-            texture = device.createTexture(() -> "Vanilla Shader shadow heightmap", usage, TextureFormat.RGBA8, SIZE, SIZE, 1, 1);
-            view = device.createTextureView(texture);
+            texture = new PostTexture("shadow heightmap");
+            texture.ensureSize(SIZE, SIZE);
             band = MemoryUtil.memAlloc(SIZE * ROWS_PER_FRAME * 4);
-            device.createCommandEncoder().clearColorTexture(texture, 0);
+            texture.clear(0);
         }
 
         minY = level.getMinY();
-        int centerX = (int) Math.floor(minecraft.gameRenderer.getMainCamera().position().x);
-        int centerZ = (int) Math.floor(minecraft.gameRenderer.getMainCamera().position().z);
+        int centerX = (int) Math.floor(McCompat.cameraPosition().x);
+        int centerZ = (int) Math.floor(McCompat.cameraPosition().z);
         int originX = centerX - SIZE / 2;
         int originZ = centerZ - SIZE / 2;
 
@@ -110,7 +104,7 @@ final class ShadowHeightmap {
             rowMaxTop[row] = rowMax;
         }
         buffer.limit(SIZE * ROWS_PER_FRAME * 4);
-        device.createCommandEncoder().writeToTexture(texture, buffer, NativeImage.Format.RGBA, 0, 0, 0, nextRow, SIZE, ROWS_PER_FRAME);
+        texture.upload(buffer, 0, nextRow, SIZE, ROWS_PER_FRAME);
         nextRow = (nextRow + ROWS_PER_FRAME) % SIZE;
     }
 }

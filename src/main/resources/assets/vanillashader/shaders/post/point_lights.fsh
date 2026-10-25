@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 // Half-resolution point lights: RGB = light from torches, lanterns and other light sources (held, dropped or

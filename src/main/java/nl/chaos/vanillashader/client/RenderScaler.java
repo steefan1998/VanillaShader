@@ -5,9 +5,9 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.config.RenderScale;
 import nl.chaos.vanillashader.config.ShaderConfig;
-import nl.chaos.vanillashader.mixin.MinecraftAccessor;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -32,25 +32,54 @@ public final class RenderScaler {
     /** Called from the GameRenderer mixin right before the level renders. */
     public static void beginLevel() {
         endLevel();
-        Minecraft minecraft = Minecraft.getInstance();
         ShaderConfig.Effects effects = ShaderConfig.effects();
         RenderScale scale = effects.renderScale();
         if (scale == RenderScale.NATIVE || !ShaderRenderer.active() || !ShaderRenderer.fsrUsable()) {
             return;
         }
-        RenderTarget main = minecraft.getMainRenderTarget();
+        RenderTarget main = McCompat.mainTarget();
         int width = Math.max(1, Math.round(main.width * scale.factor()));
         int height = Math.max(1, Math.round(main.height * scale.factor()));
-        if (scaled == null || scaled.useStencil != main.useStencil) {
+        if (scaled == null || !sameDepth(scaled, main)) {
             if (scaled != null) {
                 scaled.destroyBuffers();
             }
-            scaled = new TextureTarget("Vanilla Shader scaled world", width, height, true, main.useStencil);
+            scaled = createLike(main, width, height);
         } else if (scaled.width != width || scaled.height != height) {
+            //? if >=26.1 {
             scaled.resize(width, height);
+            //?} else
+            /*scaled.resize(width, height, Minecraft.ON_OSX);*/
         }
         fullSize = main;
-        ((MinecraftAccessor) minecraft).vanillashader$setMainRenderTarget(scaled);
+        McCompat.setMainTarget(scaled);
+    }
+
+    /** A target with the same buffers as the main one (a depth buffer with or without stencil), at another size. */
+    private static TextureTarget createLike(RenderTarget main, int width, int height) {
+        String label = "Vanilla Shader scaled world";
+        //? if >=26.3 {
+        /*return new TextureTarget(label, width, height, main.getColorTexture().getFormat(), main.getDepthTexture().getFormat());
+        *///?} else if >=26.2 {
+        /*return new TextureTarget(label, width, height, true, main.useStencil, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM);
+        *///?} else if >=26.1 {
+        return new TextureTarget(label, width, height, true, main.useStencil);
+        //?} else {
+        /*TextureTarget target = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+        if (main.isStencilEnabled()) {
+            target.enableStencil();
+        }
+        return target;
+        *///?}
+    }
+
+    private static boolean sameDepth(RenderTarget scaled, RenderTarget main) {
+        //? if >=26.3 {
+        /*return scaled.getDepthTexture() != null && main.getDepthTexture() != null && scaled.getDepthTexture().getFormat() == main.getDepthTexture().getFormat();
+        *///?} else if >=26.1 {
+        return scaled.useStencil == main.useStencil;
+        //?} else
+        /*return scaled.isStencilEnabled() == main.isStencilEnabled();*/
     }
 
     /** The real, window-sized main target while the scaled one is installed; null when not scaling. */
@@ -60,7 +89,7 @@ public final class RenderScaler {
 
     static void endLevel() {
         if (fullSize != null) {
-            ((MinecraftAccessor) Minecraft.getInstance()).vanillashader$setMainRenderTarget(fullSize);
+            McCompat.setMainTarget(fullSize);
             fullSize = null;
         }
     }

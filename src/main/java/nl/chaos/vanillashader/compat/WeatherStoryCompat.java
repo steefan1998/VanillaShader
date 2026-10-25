@@ -1,7 +1,6 @@
 package nl.chaos.vanillashader.compat;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.logging.LogUtils;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -9,6 +8,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
+import nl.chaos.vanillashader.client.gpu.TexRef;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -54,13 +54,17 @@ public final class WeatherStoryCompat {
      * the camera, projected along the sun onto y = 0 and covering {@link #cloudShadowRange()} blocks each way.
      * WeatherStory only applies it in the vanilla terrain shader, which Sodium replaces.
      */
-    public static @Nullable GpuTextureView cloudShadowMap() {
+    public static @Nullable TexRef cloudShadowMap() {
         if (!resolveClouds()) {
             return null;
         }
         try {
             RenderTarget target = (RenderTarget) shadowMapField.get(null);
-            return target == null ? null : target.getColorTextureView();
+            //? if >=26.1 {
+            return target == null || target.getColorTexture() == null ? null : TexRef.color(target);
+            //?} else
+            /*return target == null || target.getColorTextureId() <= 0 ? null : TexRef.color(target);*/
+
         } catch (ReflectiveOperationException | ClassCastException e) {
             LOGGER.warn("Could not read WeatherStory's cloud shadow map, cloud shadows disabled", e);
             shadowMapField = null;

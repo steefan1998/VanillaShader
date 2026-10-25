@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 uniform sampler2D LitSampler;

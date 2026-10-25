@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 // Half-resolution ray-traced reflections on glossy blocks, chosen per block from the material volume: obsidian,

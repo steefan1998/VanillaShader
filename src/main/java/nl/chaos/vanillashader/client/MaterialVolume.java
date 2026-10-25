@@ -1,11 +1,5 @@
 package nl.chaos.vanillashader.client;
 
-import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.GpuDevice;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import java.nio.ByteBuffer;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -18,6 +12,8 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
+import nl.chaos.vanillashader.client.gpu.PostTexture;
+import nl.chaos.vanillashader.client.gpu.TexRef;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 
@@ -46,23 +42,20 @@ final class MaterialVolume {
     static final int MATERIAL_EMISSIVE = 6;
 
     private final Map<BlockState, Integer> classified = new IdentityHashMap<>();
-    private @Nullable GpuTexture texture;
-    private @Nullable GpuTextureView view;
+    private @Nullable PostTexture texture;
     private @Nullable ByteBuffer slice;
     private int nextSlice;
 
-    @Nullable GpuTextureView view() {
-        return view;
+    @Nullable TexRef ref() {
+        return texture != null ? texture.ref() : null;
     }
 
     void update(ClientLevel level, Vec3 camera) {
-        GpuDevice device = RenderSystem.getDevice();
         if (texture == null) {
-            int usage = GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
-            texture = device.createTexture(() -> "Vanilla Shader material volume", usage, TextureFormat.RGBA8, SIZE * TILES, SIZE * TILES, 1, 1);
-            view = device.createTextureView(texture);
+            texture = new PostTexture("material volume");
+            texture.ensureSize(SIZE * TILES, SIZE * TILES);
             slice = MemoryUtil.memAlloc(SIZE * SIZE * 4);
-            device.createCommandEncoder().clearColorTexture(texture, 0);
+            texture.clear(0);
         }
 
         int originX = (int) Math.floor(camera.x) - SIZE / 2;
@@ -107,7 +100,7 @@ final class MaterialVolume {
             buffer.limit(SIZE * SIZE * 4);
             int tileX = (sliceIndex % TILES) * SIZE;
             int tileY = (sliceIndex / TILES) * SIZE;
-            device.createCommandEncoder().writeToTexture(texture, buffer, NativeImage.Format.RGBA, 0, 0, tileX, tileY, SIZE, SIZE);
+            texture.upload(buffer, tileX, tileY, SIZE, SIZE);
         }
     }
 

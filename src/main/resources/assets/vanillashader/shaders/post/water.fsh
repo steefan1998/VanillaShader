@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 // Half-resolution water: RGB = reflection already weighted by its blend factor plus the sun glint (stored at

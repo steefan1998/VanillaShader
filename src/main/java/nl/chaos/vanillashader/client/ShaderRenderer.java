@@ -1,41 +1,31 @@
 package nl.chaos.vanillashader.client;
 
-import com.mojang.blaze3d.buffers.GpuBuffer;
-import com.mojang.blaze3d.buffers.Std140Builder;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.GpuDevice;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.logging.LogUtils;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.OptionalInt;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.LevelTargetBundle;
-import net.minecraft.client.renderer.MappableRingBuffer;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.resources.Identifier;
 import net.neoforged.fml.ModList;
-import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+//? if >=26.1 {
+import net.minecraft.client.renderer.LevelTargetBundle;
+import net.neoforged.neoforge.client.event.FrameGraphSetupEvent;
+//?}
 import net.neoforged.neoforge.common.NeoForge;
-import nl.chaos.vanillashader.VanillaShader;
+import nl.chaos.vanillashader.client.gpu.DepthTexture;
+import nl.chaos.vanillashader.client.gpu.Gpu;
+import nl.chaos.vanillashader.client.gpu.Gpu.Input;
+import nl.chaos.vanillashader.client.gpu.PostPipeline;
+import nl.chaos.vanillashader.client.gpu.PostTexture;
+import nl.chaos.vanillashader.client.gpu.TexRef;
+import nl.chaos.vanillashader.client.gpu.UniformBlock;
 import nl.chaos.vanillashader.compat.IrisCompat;
+import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
 import nl.chaos.vanillashader.config.ShaderConfig;
 import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
-import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 
 /**
@@ -49,24 +39,26 @@ import org.slf4j.Logger;
  * <p>Passes: lighting (AO + sun/cloud shadows, half res) and point lights (torches, lightning, half res) -> composite
  * (depth-aware upsample of both, water, atmosphere)
  * -> bloom (quarter + eighth res) and god rays (half res) -> final grade, written back to the main target.
+ *
+ * <p>The GPU work goes through {@code client.gpu}, which has one implementation on Minecraft's GPU API (26.1+) and
+ * one on plain OpenGL (1.21.1).
  */
 public final class ShaderRenderer {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Identifier SCREEN_QUAD = Identifier.withDefaultNamespace("core/screenquad");
 
-    private static final RenderPipeline LIGHTING = pipeline("lighting", "Depth", "ShadowMap", "CloudShadow");
-    private static final RenderPipeline POINT_LIGHTS = pipeline("point_lights", "Depth", "ShadowMap");
-    private static final RenderPipeline WATER = pipeline("water", "Scene", "Depth", "OpaqueDepth", "ShadowMap");
-    private static final RenderPipeline DENOISE = pipeline("denoise", "In", "Guide");
-    private static final RenderPipeline RT_LIGHT = pipeline("rt_light", "Depth", "Volume");
-    private static final RenderPipeline RT_REFLECT = pipeline("rt_reflect", "Scene", "Depth", "Volume");
-    private static final RenderPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect");
-    private static final RenderPipeline BRIGHT = pipeline("bloom_bright", "In");
-    private static final RenderPipeline BLUR = pipeline("blur", "In");
-    private static final RenderPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth");
-    private static final RenderPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays");
-    private static final RenderPipeline FSR_EASU = pipeline("fsr_easu", "In");
-    private static final RenderPipeline FSR_RCAS = pipeline("fsr_rcas", "In");
+    private static final PostPipeline LIGHTING = pipeline("lighting", "Depth", "ShadowMap", "CloudShadow");
+    private static final PostPipeline POINT_LIGHTS = pipeline("point_lights", "Depth", "ShadowMap");
+    private static final PostPipeline WATER = pipeline("water", "Scene", "Depth", "OpaqueDepth", "ShadowMap");
+    private static final PostPipeline DENOISE = pipeline("denoise", "In", "Guide");
+    private static final PostPipeline RT_LIGHT = pipeline("rt_light", "Depth", "Volume");
+    private static final PostPipeline RT_REFLECT = pipeline("rt_reflect", "Scene", "Depth", "Volume");
+    private static final PostPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect");
+    private static final PostPipeline BRIGHT = pipeline("bloom_bright", "In");
+    private static final PostPipeline BLUR = pipeline("blur", "In");
+    private static final PostPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth");
+    private static final PostPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays");
+    private static final PostPipeline FSR_EASU = pipeline("fsr_easu", "In");
+    private static final PostPipeline FSR_RCAS = pipeline("fsr_rcas", "In");
 
     private static final Texture LIT = new Texture("lit", 1);
     private static final Texture LIGHTING_TEX = new Texture("lighting", 2);
@@ -84,26 +76,31 @@ public final class ShaderRenderer {
     private static final Texture BLOOM_FAR = new Texture("bloom_far", 8);
     private static final Texture BLOOM_FAR_TMP = new Texture("bloom_far_tmp", 8);
     private static final Texture BLACK = new Texture("black", 0);
-    private static final Texture UPSCALED = new Texture("fsr_upscaled", 1);
+    private static final PostTexture UPSCALED = new PostTexture("fsr_upscaled");
     // The level after opaque geometry and after translucent features: their difference shows WeatherStory's mist
     // and sand wisps (drawn without depth), so lighting can be kept off the veil in front of the terrain.
-    private static final Texture OPAQUE_COLOR = new Texture("opaque_color", 1);
-    private static final Texture FEATURE_COLOR = new Texture("feature_color", 1);
+    private static final PostTexture OPAQUE_COLOR = new PostTexture("opaque_color");
+    private static final PostTexture FEATURE_COLOR = new PostTexture("feature_color");
     private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RT_LIGHT_TEX, RT_LIGHT_TMP, RT_REFLECT_TEX, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
-    private static final DepthCopy OPAQUE_DEPTH = new DepthCopy("opaque_depth");
-    private static final DepthCopy FULL_DEPTH = new DepthCopy("full_depth");
+    private static final DepthTexture OPAQUE_DEPTH = new DepthTexture("opaque_depth");
+    private static final DepthTexture FULL_DEPTH = new DepthTexture("full_depth");
+    //? if >=26.3 {
+    /*private static final OitDepth OIT_DEPTH = new OitDepth();
+    private static boolean oitCaptured;
+    *///?}
 
     private static final FrameState FRAME = new FrameState();
     private static final ShadowHeightmap SHADOW_MAP = new ShadowHeightmap();
     private static final MaterialVolume VOLUME = new MaterialVolume();
-    private static @Nullable MappableRingBuffer frameUniforms;
-    private static @Nullable GpuBuffer blurHorizontal;
-    private static @Nullable GpuBuffer blurVertical;
+    private static @Nullable UniformBlock frameUniforms;
+    private static @Nullable UniformBlock blurHorizontal;
+    private static @Nullable UniformBlock blurVertical;
     // Denoise directions that leave the packed distances in BA untouched (the plain blur ones blur all channels).
-    private static @Nullable GpuBuffer denoiseHorizontalKeep;
-    private static @Nullable GpuBuffer denoiseVerticalKeep;
-    private static @Nullable GpuBuffer fsrConfig;
+    private static @Nullable UniformBlock denoiseHorizontalKeep;
+    private static @Nullable UniformBlock denoiseVerticalKeep;
+    private static @Nullable UniformBlock fsrConfig;
     private static int fsrSharpness = -1;
+    //? if >=26.1
     private static @Nullable LevelTargetBundle targets;
     private static boolean opaqueCaptured;
     private static boolean fullCaptured;
@@ -116,11 +113,14 @@ public final class ShaderRenderer {
     }
 
     public static void init() {
+        //? if >=26.1 {
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::onFrameGraphSetup);
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterOpaqueFeatures);
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterTranslucentFeatures);
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterTranslucentBlocks);
         NeoForge.EVENT_BUS.addListener(ShaderRenderer::afterLevel);
+        //?} else
+        /*NeoForge.EVENT_BUS.addListener(ShaderRenderer::onRenderStage);*/
         RenderScaler.init();
     }
 
@@ -129,27 +129,12 @@ public final class ShaderRenderer {
         FRAME.setLevelProjection(projection);
     }
 
-    // The pipelines are deliberately not registered through RegisterRenderPipelinesEvent: Minecraft treats every
-    // registered pipeline as required and drops ALL shaders (crashing the game) if one fails to compile on a driver.
-    // Compiled on first use instead, where usable() turns a failure into one missing effect.
-
-    private static RenderPipeline pipeline(String name, String... samplers) {
-        RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.POST_PROCESSING_SNIPPET)
-            .withLocation(VanillaShader.id("pipeline/" + name))
-            .withVertexShader(SCREEN_QUAD)
-            .withFragmentShader(VanillaShader.id("post/" + name));
-        String uniformBlock = uniformBlock(name);
-        if (uniformBlock != null) {
-            builder.withUniform(uniformBlock, UniformType.UNIFORM_BUFFER);
-        }
-        for (String sampler : samplers) {
-            builder.withSampler(sampler + "Sampler");
-        }
-        return builder.build();
+    private static PostPipeline pipeline(String name, String... samplers) {
+        return PostPipeline.create(name, uniformBlock(name), samplers);
     }
 
     // The blur only needs its direction, RCAS its sharpness and EASU nothing; every other pass reads the frame block.
-    private static @Nullable String uniformBlock(String pipeline) {
+    static @Nullable String uniformBlock(String pipeline) {
         return switch (pipeline) {
             case "blur" -> "BlurConfig";
             case "fsr_rcas" -> "FsrConfig";
@@ -163,28 +148,70 @@ public final class ShaderRenderer {
         return !failed && ShaderConfig.effects().enabled() && !IrisCompat.shaderPackInUse() && Minecraft.getInstance().level != null;
     }
 
-    private static void onFrameGraphSetup(FrameGraphSetupEvent event) {
-        targets = event.getTargetBundle();
+    /** Whether this frame needs the snapshot after opaque geometry (LevelRendererMixin splits a render pass for it). */
+    public static boolean wantsOpaqueSnapshot() {
+        return active();
+    }
+
+    /** Snapshots the level after opaque geometry: its depth (for the water mask) and, in close fog, its colour. */
+    public static void captureOpaque() {
+        if (!active()) {
+            return;
+        }
+        RenderTarget main = McCompat.mainTarget();
+        opaqueCaptured = OPAQUE_DEPTH.copyFrom(main);
+        // Mist and sand wisps only show up when fog is close; otherwise skip the two full-screen copies. Skipped from 26.3,
+        // where they would need yet another pass split and WeatherStory (whose mist this is for) does not exist.
+        //? if <26.3
+        opaqueColorCaptured = FRAME.fogIsClose() && OPAQUE_COLOR.copyColorFrom(main);
+    }
+
+    /** Snapshots the depth with translucent terrain (from 26.3 called by LevelRendererMixin, between render passes). */
+    public static void captureTranslucent() {
+        if (active()) {
+            fullCaptured = FULL_DEPTH.copyFrom(McCompat.mainTarget());
+        }
+    }
+
+    private static void startLevel() {
         opaqueCaptured = false;
         fullCaptured = false;
         opaqueColorCaptured = false;
         featureColorCaptured = false;
+        //? if >=26.3
+        /*oitCaptured = false;*/
     }
+
+    //? if >=26.1 {
+    private static void onFrameGraphSetup(FrameGraphSetupEvent event) {
+        targets = event.getTargetBundle();
+        startLevel();
+    }
+
+    //? if >=26.3 {
+    /*// With improved transparency (OIT) translucent surfaces leave the depth buffer alone; called right after OIT, while
+    // its depth bounds still hold the nearest translucent surface per pixel.
+    public static void captureOit() {
+        if (active() && targets != null) {
+            oitCaptured = OIT_DEPTH.capture(targets);
+        }
+    }
+    *///?}
 
     private static void afterOpaqueFeatures(RenderLevelStageEvent.AfterOpaqueFeatures event) {
         if (!active()) {
             return;
         }
         FRAME.capture(event.getLevelRenderState());
-        RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
-        opaqueCaptured = OPAQUE_DEPTH.copyFrom(main);
-        // Mist and sand wisps only show up when fog is close; otherwise skip the two full-screen copies.
-        opaqueColorCaptured = FRAME.fogIsClose() && OPAQUE_COLOR.copyFrom(main);
+        // From 26.3 this event fires inside the level's render pass, where nothing can be copied; LevelRendererMixin
+        // calls captureOpaque() between passes instead.
+        //? if <26.3
+        captureOpaque();
     }
 
     private static void afterTranslucentFeatures(RenderLevelStageEvent.AfterTranslucentFeatures event) {
         if (active() && opaqueColorCaptured) {
-            featureColorCaptured = FEATURE_COLOR.copyFrom(Minecraft.getInstance().getMainRenderTarget());
+            featureColorCaptured = FEATURE_COLOR.copyColorFrom(McCompat.mainTarget());
         }
     }
 
@@ -192,55 +219,90 @@ public final class ShaderRenderer {
         if (!active()) {
             return;
         }
+        // From 26.3 this runs inside a render pass; LevelRendererMixin calls captureTranslucent() instead.
+        //? if <26.3 {
         // With Fabulous graphics, translucent terrain is drawn into its own target.
         RenderTarget source = targets != null && targets.translucent != null
             ? targets.translucent.get()
-            : Minecraft.getInstance().getMainRenderTarget();
+            : McCompat.mainTarget();
         fullCaptured = FULL_DEPTH.copyFrom(source);
+        //?}
     }
 
     private static void afterLevel(RenderLevelStageEvent.AfterLevel event) {
         targets = null;
+        finishLevel(() -> FRAME.capture(event.getLevelRenderState()));
+    }
+    //?} else {
+    /*// 1.21.1 has a single event with stages: the sky starts a level, block entities end the opaque geometry.
+    private static void onRenderStage(RenderLevelStageEvent event) {
+        RenderLevelStageEvent.Stage stage = event.getStage();
+        if (stage == RenderLevelStageEvent.Stage.AFTER_SKY) {
+            startLevel();
+        } else if (stage == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+            if (active()) {
+                captureFrame(event);
+                captureOpaque();
+            }
+        } else if (stage == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            if (active()) {
+                // With Fabulous graphics, translucent terrain is drawn into its own target.
+                RenderTarget translucent = event.getLevelRenderer().getTranslucentTarget();
+                fullCaptured = FULL_DEPTH.copyFrom(translucent != null ? translucent : McCompat.mainTarget());
+            }
+        } else if (stage == RenderLevelStageEvent.Stage.AFTER_LEVEL) {
+            finishLevel(() -> captureFrame(event));
+        }
+    }
+
+    private static void captureFrame(RenderLevelStageEvent event) {
+        FRAME.capture(event.getCamera(), event.getProjectionMatrix(), event.getModelViewMatrix(), Minecraft.getInstance().level,
+            event.getPartialTick().getGameTimeDeltaPartialTick(false));
+    }
+    *///?}
+
+    // After the level: our passes, then the FSR upscale back to window size.
+    private static void finishLevel(Runnable captureFrame) {
         RenderTarget fullSize = RenderScaler.fullSizeTarget();
         try {
             if (active()) {
-                render(event.getLevelRenderState());
+                render(captureFrame);
             }
             if (fullSize != null) {
-                upscale(Minecraft.getInstance().getMainRenderTarget(), fullSize);
+                upscale(McCompat.mainTarget(), fullSize);
             }
         } catch (RuntimeException e) {
             failed = true;
             LOGGER.error("Vanilla Shader post-processing failed and has been disabled for this session", e);
         } finally {
+            Gpu.finish();
             RenderScaler.endLevel();
         }
         DevCapture.afterLevel();
         PassTimer.endFrame();
     }
 
-    private static void render(LevelRenderState levelState) {
+    // captureFrame reads the camera and sky when the snapshot after opaque geometry did not happen.
+    private static void render(Runnable captureFrame) {
         Minecraft minecraft = Minecraft.getInstance();
-        RenderTarget main = minecraft.getMainRenderTarget();
-        GpuDevice device = RenderSystem.getDevice();
-        CommandEncoder encoder = device.createCommandEncoder();
+        RenderTarget main = McCompat.mainTarget();
         int width = main.width;
         int height = main.height;
 
         for (Texture texture : TEXTURES) {
-            texture.ensure(device, width, height);
+            texture.ensure(width, height);
         }
         if (!fullCaptured) {
             // Some renderers skip the stage events; fall back to the final depth buffer.
             fullCaptured = FULL_DEPTH.copyFrom(main);
         }
         if (!opaqueCaptured) {
-            FRAME.capture(levelState);
+            captureFrame.run();
         }
         if (!fullCaptured) {
             return;
         }
-        DepthCopy opaqueDepth = opaqueCaptured ? OPAQUE_DEPTH : FULL_DEPTH;
+        TexRef opaqueDepth = (opaqueCaptured ? OPAQUE_DEPTH : FULL_DEPTH).ref();
 
         ShaderConfig.Effects effects = ShaderConfig.effects();
         // The height map also tells real water from ice and glass for the reflections.
@@ -249,58 +311,61 @@ public final class ShaderRenderer {
             SHADOW_MAP.update(minecraft);
             PassTimer.cpu("shadow heightmap", start);
         }
-        GpuTextureView cloudShadow = cloudShadowMap(effects);
+        TexRef cloudShadow = cloudShadowMap(effects);
         int cloudRange = cloudShadow != null ? WeatherStoryCompat.cloudShadowRange() : -1;
         if (cloudRange <= 0) {
             cloudShadow = null;
         }
-        FRAME.update(minecraft, effects, width, height, opaqueCaptured, device.isZZeroToOne(), SHADOW_MAP.minY(), SHADOW_MAP.maxTerrainY(), cloudRange);
-        MappableRingBuffer uniforms = frameUniforms(device);
-        try (GpuBuffer.MappedView view = encoder.mapBuffer(uniforms.currentBuffer(), false, true)) {
-            FRAME.write(Std140Builder.intoBuffer(view.data()));
-        }
-        GpuBuffer frame = uniforms.currentBuffer();
-        ensureBlurConfigs(device);
+        FRAME.update(minecraft, effects, width, height, opaqueCaptured, Gpu.isZZeroToOne(), SHADOW_MAP.minY(), SHADOW_MAP.maxTerrainY(), cloudRange);
+        UniformBlock frame = frameUniforms();
+        frame.write(data -> FRAME.write(Std140.into(data)));
+        ensureBlurConfigs();
 
-        GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+        TexRef fullDepth = FULL_DEPTH.ref();
+        //? if >=26.3 {
+        /*if (oitCaptured) {
+            // Translucent surfaces put back in front of the opaque depth; null when its shader did not compile.
+            TexRef resolved = OIT_DEPTH.resolve(frame, opaqueDepth, width, height);
+            fullDepth = resolved != null ? resolved : fullDepth;
+        }
+        *///?}
 
         // The composite writes to its own texture, so it can read the level straight from the main target.
-        GpuTextureView scene = main.getColorTextureView();
-        GpuTextureView heights = (effects.shadows() > 0 || effects.reflections() > 0) && SHADOW_MAP.view() != null ? SHADOW_MAP.view() : BLACK.view;
+        TexRef scene = TexRef.color(main);
+        TexRef heights = (effects.shadows() > 0 || effects.reflections() > 0) && SHADOW_MAP.ref() != null ? SHADOW_MAP.ref() : BLACK.ref();
 
         // Every pass checks that its shader compiled on this GPU; a broken one only loses its own effect.
         if (usable(LIGHTING)) {
-            draw(encoder, LIGHTING, LIGHTING_TEX.view, frame, null,
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("ShadowMap", heights, nearest),
-                new Input("CloudShadow", cloudShadow != null ? cloudShadow : BLACK.view, linear));
+            draw(LIGHTING, LIGHTING_TEX, frame, null,
+                new Input("Depth", fullDepth, false),
+                new Input("ShadowMap", heights, false),
+                new Input("CloudShadow", cloudShadow != null ? cloudShadow : BLACK.ref(), true));
         } else {
             // White: no occlusion, full sun, and the farthest distance so the upsample weighs all texels alike.
-            encoder.clearColorTexture(LIGHTING_TEX.texture, 0xFFFFFFFF);
+            LIGHTING_TEX.texture.clear(0xFFFFFFFF);
         }
         boolean denoise = usable(DENOISE) && (effects.ambientOcclusion() > 0 || effects.shadows() > 0);
         if (denoise && usable(LIGHTING)) {
-            denoise(encoder, LIGHTING_TEX, LIGHTING_TMP, LIGHTING_TEX, true);
+            denoise(LIGHTING_TEX, LIGHTING_TMP, LIGHTING_TEX, true);
         }
         if (FRAME.anyPointLights() && usable(POINT_LIGHTS)) {
-            draw(encoder, POINT_LIGHTS, POINT_LIGHTS_TEX.view, frame, null,
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("ShadowMap", heights, nearest));
+            draw(POINT_LIGHTS, POINT_LIGHTS_TEX, frame, null,
+                new Input("Depth", fullDepth, false),
+                new Input("ShadowMap", heights, false));
             if (usable(DENOISE)) {
-                denoise(encoder, POINT_LIGHTS_TEX, POINT_LIGHTS_TMP, LIGHTING_TEX, false);
+                denoise(POINT_LIGHTS_TEX, POINT_LIGHTS_TMP, LIGHTING_TEX, false);
             }
         } else {
-            encoder.clearColorTexture(POINT_LIGHTS_TEX.texture, 0);
+            POINT_LIGHTS_TEX.texture.clear(0);
         }
         if (effects.reflections() > 0 && usable(WATER)) {
-            draw(encoder, WATER, WATER_TEX.view, frame, null,
-                new Input("Scene", scene, linear),
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("OpaqueDepth", opaqueDepth.view, nearest),
-                new Input("ShadowMap", heights, nearest));
+            draw(WATER, WATER_TEX, frame, null,
+                new Input("Scene", scene, true),
+                new Input("Depth", fullDepth, false),
+                new Input("OpaqueDepth", opaqueDepth, false),
+                new Input("ShadowMap", heights, false));
         } else {
-            encoder.clearColorTexture(WATER_TEX.texture, 0);
+            WATER_TEX.texture.clear(0);
         }
 
         // Ray-traced lighting: rays through a voxel copy of the nearby blocks for light from emissive blocks and
@@ -308,94 +373,99 @@ public final class ShaderRenderer {
         boolean tracing = ShaderConfig.RAY_TRACING.get();
         if (tracing) {
             long start = System.nanoTime();
-            VOLUME.update(minecraft.level, minecraft.gameRenderer.getMainCamera().position());
+            VOLUME.update(minecraft.level, McCompat.cameraPosition());
             PassTimer.cpu("material volume", start);
         }
-        GpuTextureView volume = VOLUME.view() != null ? VOLUME.view() : BLACK.view;
+        TexRef volume = VOLUME.ref() != null ? VOLUME.ref() : BLACK.ref();
         if (tracing && usable(RT_LIGHT)) {
-            draw(encoder, RT_LIGHT, RT_LIGHT_TEX.view, frame, null,
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("Volume", volume, nearest));
+            draw(RT_LIGHT, RT_LIGHT_TEX, frame, null,
+                new Input("Depth", fullDepth, false),
+                new Input("Volume", volume, false));
             if (usable(DENOISE)) {
-                denoise(encoder, RT_LIGHT_TEX, RT_LIGHT_TMP, LIGHTING_TEX, false);
+                denoise(RT_LIGHT_TEX, RT_LIGHT_TMP, LIGHTING_TEX, false);
             }
         } else {
-            encoder.clearColorTexture(RT_LIGHT_TEX.texture, 0);
+            RT_LIGHT_TEX.texture.clear(0);
         }
         if (tracing && usable(RT_REFLECT)) {
-            draw(encoder, RT_REFLECT, RT_REFLECT_TEX.view, frame, null,
-                new Input("Scene", scene, linear),
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("Volume", volume, nearest));
+            draw(RT_REFLECT, RT_REFLECT_TEX, frame, null,
+                new Input("Scene", scene, true),
+                new Input("Depth", fullDepth, false),
+                new Input("Volume", volume, false));
         } else {
-            encoder.clearColorTexture(RT_REFLECT_TEX.texture, 0);
+            RT_REFLECT_TEX.texture.clear(0);
         }
 
         if (usable(COMPOSITE)) {
-            draw(encoder, COMPOSITE, LIT.view, frame, null,
-                new Input("Scene", scene, linear),
-                new Input("Depth", FULL_DEPTH.view, nearest),
-                new Input("OpaqueDepth", opaqueDepth.view, nearest),
-                new Input("Lighting", LIGHTING_TEX.view, nearest),
-                new Input("PointLights", POINT_LIGHTS_TEX.view, nearest),
-                new Input("Water", WATER_TEX.view, linear),
+            draw(COMPOSITE, LIT, frame, null,
+                new Input("Scene", scene, true),
+                new Input("Depth", fullDepth, false),
+                new Input("OpaqueDepth", opaqueDepth, false),
+                new Input("Lighting", LIGHTING_TEX.ref(), false),
+                new Input("PointLights", POINT_LIGHTS_TEX.ref(), false),
+                new Input("Water", WATER_TEX.ref(), true),
                 // Without both snapshots, comparing a texture with itself means "no veil anywhere".
-                new Input("OpaqueColor", featureColorCaptured ? OPAQUE_COLOR.view : scene, nearest),
-                new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.view : scene, nearest),
-                new Input("ShadowMap", heights, nearest),
-                new Input("RtLight", RT_LIGHT_TEX.view, nearest),
-                new Input("RtReflect", RT_REFLECT_TEX.view, linear));
+                new Input("OpaqueColor", featureColorCaptured ? OPAQUE_COLOR.ref() : scene, false),
+                new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.ref() : scene, false),
+                new Input("ShadowMap", heights, false),
+                new Input("RtLight", RT_LIGHT_TEX.ref(), false),
+                new Input("RtReflect", RT_REFLECT_TEX.ref(), true));
         } else {
             // Bloom, god rays and grading still work on the plain level.
-            encoder.copyTextureToTexture(main.getColorTexture(), LIT.texture, 0, 0, 0, 0, 0, width, height);
+            LIT.texture.copyColorFrom(main);
         }
 
-        GpuTextureView bloomNear = BLACK.view;
-        GpuTextureView bloomFar = BLACK.view;
+        TexRef bloomNear = BLACK.ref();
+        TexRef bloomFar = BLACK.ref();
         if (effects.bloom() > 0 && usable(BRIGHT) && usable(BLUR)) {
-            draw(encoder, BRIGHT, BLOOM_NEAR.view, frame, null, new Input("In", LIT.view, linear));
-            blur(encoder, frame, BLOOM_NEAR, BLOOM_NEAR_TMP, linear, effects.bloom() >= 4 ? 2 : 1);
-            bloomNear = BLOOM_NEAR.view;
+            draw(BRIGHT, BLOOM_NEAR, frame, null, new Input("In", LIT.ref(), true));
+            blur(BLOOM_NEAR, BLOOM_NEAR_TMP, effects.bloom() >= 4 ? 2 : 1);
+            bloomNear = BLOOM_NEAR.ref();
             if (effects.bloom() >= 3) {
-                draw(encoder, BLUR, BLOOM_FAR.view, frame, blurHorizontal, new Input("In", BLOOM_NEAR.view, linear));
-                blur(encoder, frame, BLOOM_FAR, BLOOM_FAR_TMP, linear, 1);
-                bloomFar = BLOOM_FAR.view;
+                draw(BLUR, BLOOM_FAR, frame, blurHorizontal, new Input("In", BLOOM_NEAR.ref(), true));
+                blur(BLOOM_FAR, BLOOM_FAR_TMP, 1);
+                bloomFar = BLOOM_FAR.ref();
             }
         }
 
-        GpuTextureView rays = BLACK.view;
+        TexRef rays = BLACK.ref();
         if (effects.godRays() > 0 && FRAME.sunOnScreen() && usable(GOD_RAYS)) {
-            draw(encoder, GOD_RAYS, RAYS.view, frame, null,
-                new Input("Scene", scene, linear),
-                new Input("Depth", FULL_DEPTH.view, nearest));
+            draw(GOD_RAYS, RAYS, frame, null,
+                new Input("Scene", scene, true),
+                new Input("Depth", fullDepth, false));
             // The rays march with per-pixel jitter; a light blur hides the grain.
             if (usable(BLUR)) {
-                blur(encoder, frame, RAYS, RAYS_TMP, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR), 1);
+                blur(RAYS, RAYS_TMP, 1);
             }
-            rays = RAYS.view;
+            rays = RAYS.ref();
         }
 
         // Without the final pass nothing is written back, and the level simply shows as vanilla.
         if (usable(FINAL)) {
-            draw(encoder, FINAL, main.getColorTextureView(), frame, null,
-                new Input("Lit", LIT.view, linear),
-                new Input("BloomNear", bloomNear, linear),
-                new Input("BloomFar", bloomFar, linear),
-                new Input("Rays", rays, linear));
+            try (PassTimer.Timing timing = PassTimer.gpu(FINAL.path())) {
+                Gpu.draw(FINAL, main, "Frame", frame,
+                    new Input("Lit", LIT.ref(), true),
+                    new Input("BloomNear", bloomNear, true),
+                    new Input("BloomFar", bloomFar, true),
+                    new Input("Rays", rays, true));
+            }
         }
 
-        uniforms.rotate();
+        frame.rotate();
     }
 
     /**
      * Whether the pipeline's shaders compiled on this GPU. Drivers differ in what GLSL they accept, so instead of
      * failing the whole mod, a broken pass is skipped and reported once.
      */
-    private static boolean usable(RenderPipeline pipeline) {
-        boolean valid = RenderSystem.getDevice().precompilePipeline(pipeline).isValid();
-        if (!valid && BROKEN.add(pipeline.getLocation().toString())) {
-            LOGGER.warn("Vanilla Shader: {} did not compile on {} ({}); that effect is turned off. The shader error is logged above.",
-                pipeline.getLocation(), RenderSystem.getDevice().getRenderer(), RenderSystem.getDevice().getVersion());
+    static boolean usable(PostPipeline pipeline) {
+        if (BROKEN.contains(pipeline.location())) {
+            return false;
+        }
+        boolean valid = pipeline.compiles();
+        if (!valid && BROKEN.add(pipeline.location())) {
+            LOGGER.warn("Vanilla Shader: {} did not compile on {}; that effect is turned off. The shader error is logged above.",
+                pipeline.location(), Gpu.describe());
         }
         return valid;
     }
@@ -409,7 +479,7 @@ public final class ShaderRenderer {
      * WeatherStory draws cloud shadows only in the vanilla terrain shader. Sodium replaces that shader, so with
      * Sodium installed we apply WeatherStory's cloud shadow map ourselves; without it, WeatherStory already does.
      */
-    private static @Nullable GpuTextureView cloudShadowMap(ShaderConfig.Effects effects) {
+    private static @Nullable TexRef cloudShadowMap(ShaderConfig.Effects effects) {
         if (effects.shadows() <= 0 || !ShaderConfig.WEATHER_INTEGRATION.get() || !ModList.get().isLoaded("sodium")) {
             return null;
         }
@@ -421,16 +491,16 @@ public final class ShaderRenderer {
      * contrast-adaptive sharpening (RCAS) into the real main target.
      */
     private static void upscale(RenderTarget source, RenderTarget destination) {
-        GpuDevice device = RenderSystem.getDevice();
-        CommandEncoder encoder = device.createCommandEncoder();
-        UPSCALED.ensureSize(device, destination.width, destination.height);
-        GpuBuffer config = fsrConfig(device);
-        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        drawWith(encoder, FSR_EASU, UPSCALED.view, null, null, new Input("In", source.getColorTextureView(), nearest));
-        drawWith(encoder, FSR_RCAS, destination.getColorTextureView(), "FsrConfig", config, new Input("In", UPSCALED.view, nearest));
+        UPSCALED.ensureSize(destination.width, destination.height);
+        try (PassTimer.Timing timing = PassTimer.gpu(FSR_EASU.path())) {
+            Gpu.draw(FSR_EASU, UPSCALED, null, null, new Input("In", TexRef.color(source), false));
+        }
+        try (PassTimer.Timing timing = PassTimer.gpu(FSR_RCAS.path())) {
+            Gpu.draw(FSR_RCAS, destination, "FsrConfig", fsrConfig(), new Input("In", UPSCALED.ref(), false));
+        }
     }
 
-    private static GpuBuffer fsrConfig(GpuDevice device) {
+    private static UniformBlock fsrConfig() {
         int sharpness = ShaderConfig.FSR_SHARPNESS.get();
         if (fsrConfig == null || sharpness != fsrSharpness) {
             if (fsrConfig != null) {
@@ -438,172 +508,85 @@ public final class ShaderRenderer {
             }
             // RCAS takes sharpness in stops (0 = sharpest); 100% maps to 0 stops and 0% to 2 stops.
             float stops = (1.0F - sharpness / 100.0F) * 2.0F;
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                Std140Builder builder = Std140Builder.onStack(stack, 16);
-                builder.putVec4((float) Math.pow(2.0, -stops), 0.0F, 0.0F, 0.0F);
-                fsrConfig = device.createBuffer(() -> "Vanilla Shader FSR", GpuBuffer.USAGE_UNIFORM, builder.get());
-            }
+            fsrConfig = UniformBlock.constant("FSR", 16, data -> Std140.into(data).putVec4((float) Math.pow(2.0, -stops), 0.0F, 0.0F, 0.0F));
             fsrSharpness = sharpness;
         }
         return fsrConfig;
     }
 
     // Depth-aware blur, horizontal into temp then vertical back; distances for the edge test come from the guide.
-    private static void denoise(CommandEncoder encoder, Texture target, Texture temp, Texture guide, boolean keepDistances) {
-        GpuSampler nearest = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
-        GpuBuffer horizontal = keepDistances ? denoiseHorizontalKeep : blurHorizontal;
-        GpuBuffer vertical = keepDistances ? denoiseVerticalKeep : blurVertical;
+    private static void denoise(Texture target, Texture temp, Texture guide, boolean keepDistances) {
+        UniformBlock horizontal = keepDistances ? denoiseHorizontalKeep : blurHorizontal;
+        UniformBlock vertical = keepDistances ? denoiseVerticalKeep : blurVertical;
         // When the guide is the target itself, the temp copy carries the (unchanged) distances for the second pass.
         Texture secondGuide = guide == target ? temp : guide;
-        drawWith(encoder, DENOISE, temp.view, "DenoiseConfig", horizontal, new Input("In", target.view, nearest), new Input("Guide", guide.view, nearest));
-        drawWith(encoder, DENOISE, target.view, "DenoiseConfig", vertical, new Input("In", temp.view, nearest), new Input("Guide", secondGuide.view, nearest));
+        drawWith(DENOISE, temp, "DenoiseConfig", horizontal, new Input("In", target.ref(), false), new Input("Guide", guide.ref(), false));
+        drawWith(DENOISE, target, "DenoiseConfig", vertical, new Input("In", temp.ref(), false), new Input("Guide", secondGuide.ref(), false));
     }
 
-    private static void blur(CommandEncoder encoder, GpuBuffer frame, Texture target, Texture temp, GpuSampler sampler, int iterations) {
+    private static void blur(Texture target, Texture temp, int iterations) {
         for (int i = 0; i < iterations; i++) {
-            draw(encoder, BLUR, temp.view, frame, blurHorizontal, new Input("In", target.view, sampler));
-            draw(encoder, BLUR, target.view, frame, blurVertical, new Input("In", temp.view, sampler));
+            drawWith(BLUR, temp, "BlurConfig", blurHorizontal, new Input("In", target.ref(), true));
+            drawWith(BLUR, target, "BlurConfig", blurVertical, new Input("In", temp.ref(), true));
         }
     }
 
-    private static void draw(
-        CommandEncoder encoder, RenderPipeline pipeline, GpuTextureView output, GpuBuffer frame, @Nullable GpuBuffer blurConfig, Input... inputs
-    ) {
+    private static void draw(PostPipeline pipeline, Texture output, UniformBlock frame, @Nullable UniformBlock blurConfig, Input... inputs) {
         if (blurConfig != null) {
-            drawWith(encoder, pipeline, output, "BlurConfig", blurConfig, inputs);
+            drawWith(pipeline, output, "BlurConfig", blurConfig, inputs);
         } else {
-            drawWith(encoder, pipeline, output, "Frame", frame, inputs);
+            drawWith(pipeline, output, "Frame", frame, inputs);
         }
     }
 
-    private static void drawWith(CommandEncoder encoder, RenderPipeline pipeline, GpuTextureView output, @Nullable String uniformName, @Nullable GpuBuffer uniforms, Input... inputs) {
-        try (PassTimer.Timing timing = PassTimer.gpu(encoder, pipeline.getLocation().getPath());
-             RenderPass pass = encoder.createRenderPass(() -> "Vanilla Shader " + pipeline.getLocation(), output, OptionalInt.empty())) {
-            pass.setPipeline(pipeline);
-            if (uniformName != null && uniforms != null) {
-                pass.setUniform(uniformName, uniforms);
-            }
-            for (Input input : inputs) {
-                pass.bindTexture(input.name + "Sampler", input.view, input.sampler);
-            }
-            pass.draw(0, 3);
+    private static void drawWith(PostPipeline pipeline, Texture output, @Nullable String block, @Nullable UniformBlock uniforms, Input... inputs) {
+        try (PassTimer.Timing timing = PassTimer.gpu(pipeline.path())) {
+            Gpu.draw(pipeline, output.texture, block, uniforms, inputs);
         }
     }
 
-    private static MappableRingBuffer frameUniforms(GpuDevice device) {
+    private static UniformBlock frameUniforms() {
         if (frameUniforms == null) {
-            frameUniforms = new MappableRingBuffer(() -> "Vanilla Shader frame", GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_MAP_WRITE, FrameState.SIZE);
+            frameUniforms = UniformBlock.perFrame("frame", FrameState.SIZE);
         }
         return frameUniforms;
     }
 
-    private static void ensureBlurConfigs(GpuDevice device) {
+    private static void ensureBlurConfigs() {
         if (blurHorizontal == null) {
-            blurHorizontal = blurConfig(device, 1.0F, 0.0F, 0.0F);
-            blurVertical = blurConfig(device, 0.0F, 1.0F, 0.0F);
-            denoiseHorizontalKeep = blurConfig(device, 1.0F, 0.0F, 1.0F);
-            denoiseVerticalKeep = blurConfig(device, 0.0F, 1.0F, 1.0F);
+            blurHorizontal = blurConfig(1.0F, 0.0F, 0.0F);
+            blurVertical = blurConfig(0.0F, 1.0F, 0.0F);
+            denoiseHorizontalKeep = blurConfig(1.0F, 0.0F, 1.0F);
+            denoiseVerticalKeep = blurConfig(0.0F, 1.0F, 1.0F);
         }
     }
 
-    private static GpuBuffer blurConfig(GpuDevice device, float x, float y, float flag) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            Std140Builder builder = Std140Builder.onStack(stack, 16);
-            builder.putVec4(x, y, flag, 0.0F);
-            return device.createBuffer(() -> "Vanilla Shader blur", GpuBuffer.USAGE_UNIFORM, builder.get());
-        }
-    }
-
-    private record Input(String name, GpuTextureView view, GpuSampler sampler) {
+    private static UniformBlock blurConfig(float x, float y, float flag) {
+        return UniformBlock.constant("blur", 16, data -> Std140.into(data).putVec4(x, y, flag, 0.0F));
     }
 
     /** An RGBA8 render texture at a fraction of the screen size ({@code divisor} 0 = a fixed 1x1 black texture). */
     private static final class Texture {
-        private final String name;
+        private final PostTexture texture;
         private final int divisor;
-        private @Nullable GpuTexture texture;
-        private @Nullable GpuTextureView view;
 
         private Texture(String name, int divisor) {
-            this.name = name;
+            this.texture = new PostTexture(name);
             this.divisor = divisor;
         }
 
-        private void ensure(GpuDevice device, int screenWidth, int screenHeight) {
-            ensureSize(
-                device,
+        private void ensure(int screenWidth, int screenHeight) {
+            boolean created = texture.ensureSize(
                 divisor == 0 ? 1 : Math.max(1, screenWidth / divisor),
                 divisor == 0 ? 1 : Math.max(1, screenHeight / divisor)
             );
-        }
-
-        private boolean copyFrom(RenderTarget source) {
-            GpuTexture color = source.getColorTexture();
-            if (color == null) {
-                return false;
-            }
-            GpuDevice device = RenderSystem.getDevice();
-            ensureSize(device, source.width, source.height);
-            device.createCommandEncoder().copyTextureToTexture(color, texture, 0, 0, 0, 0, 0, source.width, source.height);
-            return true;
-        }
-
-        private void ensureSize(GpuDevice device, int width, int height) {
-            if (texture != null && texture.getWidth(0) == width && texture.getHeight(0) == height) {
-                return;
-            }
-            close();
-            int usage = GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_COPY_SRC | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
-            texture = device.createTexture(() -> "Vanilla Shader " + name, usage, TextureFormat.RGBA8, width, height, 1, 1);
-            view = device.createTextureView(texture);
-            if (divisor == 0) {
-                device.createCommandEncoder().clearColorTexture(texture, 0);
+            if (created && divisor == 0) {
+                texture.clear(0);
             }
         }
 
-        private void close() {
-            if (view != null) {
-                view.close();
-            }
-            if (texture != null) {
-                texture.close();
-            }
-            texture = null;
-            view = null;
-        }
-    }
-
-    /** A depth texture with the same format as the source it copies from. */
-    private static final class DepthCopy {
-        private final String name;
-        private @Nullable GpuTexture texture;
-        private @Nullable GpuTextureView view;
-
-        private DepthCopy(String name) {
-            this.name = name;
-        }
-
-        private boolean copyFrom(RenderTarget source) {
-            GpuTexture depth = source.getDepthTexture();
-            if (depth == null) {
-                return false;
-            }
-            int width = depth.getWidth(0);
-            int height = depth.getHeight(0);
-            if (texture == null || texture.getWidth(0) != width || texture.getHeight(0) != height || texture.getFormat() != depth.getFormat()) {
-                if (view != null) {
-                    view.close();
-                }
-                if (texture != null) {
-                    texture.close();
-                }
-                GpuDevice device = RenderSystem.getDevice();
-                int usage = GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_RENDER_ATTACHMENT;
-                texture = device.createTexture(() -> "Vanilla Shader " + name, usage, depth.getFormat(), width, height, 1, 1);
-                view = device.createTextureView(texture);
-            }
-            RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(depth, texture, 0, 0, 0, 0, 0, width, height);
-            return true;
+        private TexRef ref() {
+            return texture.ref();
         }
     }
 }

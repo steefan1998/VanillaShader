@@ -1,5 +1,6 @@
 #version 330
 
+#moj_import <vanillashader:common.glsl>
 #moj_import <vanillashader:frame.glsl>
 
 // Half-resolution ray-traced light from light-emitting blocks. Rays leave every surface in a cosine-weighted
