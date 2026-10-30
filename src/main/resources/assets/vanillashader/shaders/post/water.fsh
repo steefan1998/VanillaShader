@@ -20,7 +20,7 @@ in vec2 texCoord;
 
 out vec4 fragColor;
 
-// Small pixel-snapped waves, so ripples line up with the 16x16 block texture grid.
+// Small waves; close by snapped to the 16x16 block texture grid, so ripples line up with it.
 float waveHeight(vec2 p, float t) {
     float h = sin(p.x * 1.9 + t * 1.4) * 0.35;
     h += sin(p.y * 2.7 - t * 1.1) * 0.30;
@@ -30,13 +30,17 @@ float waveHeight(vec2 p, float t) {
 }
 
 vec3 waterNormal(vec3 worldPos, float dist) {
-    vec2 p = floor(worldPos.xz * 16.0) / 16.0;
+    // Snapped to the texture grid close by, for the look; further away the grid is smaller than a pixel and snapping
+    // only makes the reflection jump from cell to cell as the waves move, so there the waves run smoothly.
+    vec2 p = mix(floor(worldPos.xz * 16.0) / 16.0, worldPos.xz, smoothstep(6.0, 16.0, dist));
     float t = CameraPos.w;
     float e = 1.0 / 16.0;
     float h = waveHeight(p, t);
     float hx = waveHeight(p + vec2(e, 0.0), t);
     float hz = waveHeight(p + vec2(0.0, e), t);
-    float strength = mix(0.06, 0.012, smoothstep(8.0, 64.0, dist)) * (1.0 + Weather.x * 1.5);
+    // Far away a tilt of a degree moves the reflection of an island across much of the screen: the waves calm down
+    // with distance, or distant reflections dance.
+    float strength = mix(0.06, 0.0015, smoothstep(8.0, 48.0, dist)) * (1.0 + Weather.x * 1.5);
     vec3 n = vec3((h - hx) / e * strength, 1.0, (h - hz) / e * strength);
     // Raindrops falling on the water, close by only: further away the rings are smaller than a pixel.
     float drops = Weather.x * rainExposure(worldPos) * (1.0 - smoothstep(12.0, 40.0, dist));
