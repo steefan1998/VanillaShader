@@ -4,6 +4,8 @@
 #moj_import <vanillashader:frame.glsl>
 
 uniform sampler2D InSampler;
+uniform sampler2D DepthSampler;  // to tell the sky from everything else
+uniform sampler2D DhMaskSampler; // A > 0.5 on Distant Horizons' terrain, which is not sky
 
 in vec2 texCoord;
 
@@ -23,5 +25,10 @@ void main() {
     float brightness = max(luma(color), max(color.r, color.g));
     // Under a bright modded sky most of the image is near white; only the brightest parts may glow.
     float weight = smoothstep(mix(0.68, 0.9, Misc.w), 1.0, brightness);
+    // The sky and its clouds are bright but are no light source: glowing, they washed out everything around the
+    // sun. Only the near-white disc of the sun itself still glows there.
+    if (isSky(texture(DepthSampler, texCoord).r) && texture(DhMaskSampler, texCoord).a < 0.5) {
+        weight = smoothstep(0.93, 1.0, luma(color));
+    }
     fragColor = vec4(finiteOr(color * weight, vec3(0.0)), 1.0);
 }

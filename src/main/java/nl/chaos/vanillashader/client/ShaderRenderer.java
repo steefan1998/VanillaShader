@@ -56,10 +56,10 @@ public final class ShaderRenderer {
     private static final PostPipeline RT_REFLECT = pipeline("rt_reflect", "Scene", "Depth", "Volume");
     private static final PostPipeline DH_MASK = pipeline("dh_mask", "Depth", "DhDepth");
     private static final PostPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect", "DhMask");
-    private static final PostPipeline BRIGHT = pipeline("bloom_bright", "In");
+    private static final PostPipeline BRIGHT = pipeline("bloom_bright", "In", "Depth", "DhMask");
     private static final PostPipeline BLUR = pipeline("blur", "In");
     private static final PostPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth", "DhMask");
-    private static final PostPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays");
+    private static final PostPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays", "Depth", "DhMask");
     private static final PostPipeline FSR_EASU = pipeline("fsr_easu", "In");
     private static final PostPipeline FSR_RCAS = pipeline("fsr_rcas", "In");
 
@@ -490,7 +490,8 @@ public final class ShaderRenderer {
         TexRef bloomNear = BLACK.ref();
         TexRef bloomFar = BLACK.ref();
         if (effects.bloom() > 0 && usable(BRIGHT) && usable(BLUR)) {
-            draw(BRIGHT, BLOOM_NEAR, frame, null, new Input("In", LIT.ref(), true));
+            draw(BRIGHT, BLOOM_NEAR, frame, null, new Input("In", LIT.ref(), true),
+                new Input("Depth", fullDepth, false), new Input("DhMask", distantMask, false));
             blur(BLOOM_NEAR, BLOOM_NEAR_TMP, effects.bloom() >= 4 ? 2 : 1);
             bloomNear = BLOOM_NEAR.ref();
             if (effects.bloom() >= 3) {
@@ -520,7 +521,9 @@ public final class ShaderRenderer {
                     new Input("Lit", LIT.ref(), true),
                     new Input("BloomNear", bloomNear, true),
                     new Input("BloomFar", bloomFar, true),
-                    new Input("Rays", rays, true));
+                    new Input("Rays", rays, true),
+                    new Input("Depth", fullDepth, false),
+                    new Input("DhMask", distantMask, false));
             }
         }
 

@@ -37,5 +37,11 @@ void main() {
     float falloff = exp(-length(fromLight) * 1.8);
 
     float strength = LightColor.w * LightScreen.z * (1.0 - Weather.y * 0.7) * (0.55 + 0.45 * Weather.z);
+    // Shafts show against what they pass in front of; on open sky they only washed the sky around the sun out to
+    // white, so there they are much fainter.
+    float here = texture(DepthSampler, texCoord).r;
+    if (isSky(here) && texture(DhMaskSampler, texCoord).a < 0.5) {
+        strength *= 0.15;
+    }
     fragColor = vec4(finiteOr(LightColor.rgb * shafts * falloff * strength * 0.9, vec3(0.0)), 1.0);
 }

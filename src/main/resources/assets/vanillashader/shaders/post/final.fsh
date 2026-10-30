@@ -7,6 +7,8 @@ uniform sampler2D LitSampler;
 uniform sampler2D BloomNearSampler;
 uniform sampler2D BloomFarSampler;
 uniform sampler2D RaysSampler;
+uniform sampler2D DepthSampler;  // to see whether terrain hides the sun or moon
+uniform sampler2D DhMaskSampler; // ...or Distant Horizons' terrain (A > 0.5)
 
 in vec2 texCoord;
 
@@ -17,6 +19,60 @@ vec3 softClip(vec3 color) {
     const float knee = 0.8;
     vec3 over = max(color - knee, 0.0);
     return min(color, vec3(knee)) + (1.0 - knee) * (1.0 - exp(-over / (1.0 - knee)));
+}
+
+// How much of the sun's (or moon's) disc is open sky: five depth taps around it. Off screen it cannot be checked;
+// it then counts as half hidden, so the flare fades out at the edge instead of popping.
+float lightVisible() {
+    vec2 light = LightScreen.xy;
+    if (!insideScreen(light)) {
+        return 0.5;
+    }
+    float visible = 0.0;
+    for (int i = 0; i < 5; i++) {
+        vec2 offset = i == 0 ? vec2(0.0) : vec2(i == 1 ? 1.0 : (i == 2 ? -1.0 : 0.0), i == 3 ? 1.0 : (i == 4 ? -1.0 : 0.0)) * 0.008;
+        vec2 p = clamp(light + offset, vec2(0.001), vec2(0.999));
+        if (isSky(texture(DepthSampler, p).r) && texture(DhMaskSampler, p).a < 0.5) {
+            visible += 0.2;
+        }
+    }
+    return visible;
+}
+
+// The sun shining into the lens: a small soft halo around it, a thin horizontal streak and a few coloured ghosts on the
+// line from the sun through the middle of the screen. The moon gets a faint version.
+vec3 lensFlare(vec2 uv) {
+    float strength = LightColor.w * LightScreen.z * (1.0 - Weather.y * 0.85) * Quality1.w;
+    if (strength < 0.01 || (Weather.w > 0.5 && Weather.w < 1.5)) {
+        return vec3(0.0);
+    }
+    strength *= lightVisible();
+    if (strength < 0.01) {
+        return vec3(0.0);
+    }
+    // The moon is bluish: a quieter flare.
+    float sunLike = step(LightColor.b, LightColor.r);
+    strength *= mix(0.35, 1.0, sunLike);
+    vec2 light = LightScreen.xy;
+    vec2 aspect = vec2(LightScreen.w, 1.0);
+    vec2 toLight = (uv - light) * aspect;
+    float dist = length(toLight);
+
+    float halo = exp(-dist * 12.0) * 0.1;
+    float streak = exp(-abs(toLight.y) * 90.0) * exp(-abs(toLight.x) * 2.5) * 0.12;
+    vec3 flare = LightColor.rgb * (halo + streak);
+
+    // Ghosts: soft discs mirrored through the centre, each its own tint.
+    vec2 axis = vec2(0.5) - light;
+    const vec3 TINTS[4] = vec3[](vec3(1.0, 0.6, 0.3), vec3(0.4, 0.75, 1.0), vec3(0.6, 1.0, 0.55), vec3(1.0, 0.45, 0.8));
+    const float PLACES[4] = float[](0.55, 1.15, 1.55, 2.05);
+    const float SIZES[4] = float[](0.035, 0.07, 0.025, 0.11);
+    for (int i = 0; i < 4; i++) {
+        vec2 ghost = light + axis * PLACES[i];
+        float d = length((uv - ghost) * aspect);
+        flare += TINTS[i] * (1.0 - smoothstep(SIZES[i] * 0.55, SIZES[i], d)) * 0.045;
+    }
+    return flare * strength;
 }
 
 void main() {
@@ -58,6 +114,8 @@ void main() {
     }
     color *= mix(vec3(1.0), tint, Look0.w);
     color = mix(lit.rgb, color, shaded);
+    // The lens flare sits on the whole picture, like light in the camera.
+    color += lensFlare(texCoord);
 
     // The vignette belongs to the whole screen, Distant Horizons' terrain included.
     vec2 centered = texCoord - 0.5;

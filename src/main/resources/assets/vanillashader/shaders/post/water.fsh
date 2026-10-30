@@ -74,7 +74,7 @@ vec4 reflectSurface(vec3 position, vec3 n, float minBlend, float maxBlend) {
     // into one smooth path of sunlight.
     float far = smoothstep(8.0, 48.0, dist);
     float towardSun = max(dot(reflected, LightDir.xyz), 0.0);
-    float glint = pow(towardSun, mix(700.0, 90.0, far)) * mix(6.0, 0.9, far) + pow(towardSun, 60.0) * 0.25;
+    float glint = pow(towardSun, mix(900.0, 90.0, far)) * mix(3.0, 0.9, far) + pow(towardSun, 160.0) * 0.12;
     vec3 sun = LightColor.rgb * LightColor.w * glint * strength * HorizonColor.w * (1.0 - fog);
     return finiteOr(vec4(min((reflection * blend + sun) * 0.5, vec3(1.0)), max(blend, 1.0 / 255.0)), vec4(0.0));
 }

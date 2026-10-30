@@ -102,7 +102,7 @@ vec4 rainbow(vec3 viewDir) {
     if (secondary > 0.0 && secondary < 1.0) {
         bow += spectrum(secondary) * sin(secondary * 3.14159) * 0.4;
     }
-    float inside = (1.0 - smoothstep(30.0, 40.0, angle)) * smoothstep(5.0, 30.0, angle) * 0.08;
+    float inside = (1.0 - smoothstep(30.0, 40.0, angle)) * smoothstep(5.0, 30.0, angle) * 0.04;
     float darkBand = smoothstep(42.4, 44.0, angle) * (1.0 - smoothstep(49.0, 51.0, angle));
     return vec4(bow * 0.3 + inside * vec3(1.0), 1.0 - darkBand * 0.06);
 }
@@ -162,11 +162,25 @@ void main() {
         if (glow.a > 0.001) {
             color = mix(color, glow.rgb * (0.35 + luma(color) * 1.2), min(glow.a, 1.0) * 0.8);
         }
-        color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18
-            + (pow(towardLight, 4.0) * 0.2 + pow(towardLight, 1.5) * 0.05) * golden * sunLike);
+        // Kept tight: a wide glow made the sun look huge and washed the sky around it out to white.
+        color += LightColor.rgb * LightColor.w * (pow(towardLight, 96.0) * 0.14 + pow(towardLight, 12.0) * 0.03
+            + (pow(towardLight, 4.0) * 0.1 + pow(towardLight, 1.5) * 0.03) * golden * sunLike);
+        // The moon: a cool glow close around it and the faint ring of light that ice crystals draw 22 degrees out.
+        if (sunLike < 0.5 && LightColor.w > 0.01) {
+            float moonAngle = degrees(acos(clamp(towardLight, -1.0, 1.0)));
+            float moonHalo = 1.0 - smoothstep(0.0, 1.5, abs(moonAngle - 22.0));
+            color += vec3(0.6, 0.7, 1.0) * LightColor.w * (pow(towardLight, 400.0) * 0.9 + pow(towardLight, 40.0) * 0.35
+                + pow(towardLight, 6.0) * 0.08 + moonHalo * 0.06 * (1.0 - Weather.y));
+        }
         if (Misc2.x > 0.001) {
             vec4 bow = rainbow(viewDir);
             color = color * mix(1.0, bow.w, Misc2.x) + bow.rgb * Misc2.x * LightColor.w * HorizonColor.w;
+        }
+        // A bright sky rolls off instead of clipping: above 0.8 its brightness rises slowly, keeping its colour and the
+        // shape of the clouds near the sun.
+        float skyLuma = luma(color);
+        if (skyLuma > 0.8) {
+            color *= (0.8 + (skyLuma - 0.8) * 0.4) / skyLuma;
         }
         fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
         return;
