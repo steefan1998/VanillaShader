@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 //? if >=26.1 {
 import net.minecraft.client.renderer.LevelTargetBundle;
@@ -120,6 +121,14 @@ public final class ShaderRenderer {
     private static long frameIndex;
     private static final Set<String> BROKEN = new HashSet<>();
 
+    // Every pass, so they can be compiled before the first world (see precompileStep).
+    private static final List<PostPipeline> PIPELINES = List.of(LIGHTING, POINT_LIGHTS, WATER, DENOISE, RT_LIGHT, RT_REFLECT, DH_MASK, COMPOSITE, BRIGHT, BLUR, GOD_RAYS, FINAL, FSR_EASU, FSR_RCAS);
+    // -Dvanillashader.noPrecompile=true leaves all compiling to the first frames in a world, to compare join stalls.
+    private static final boolean PRECOMPILE = !Boolean.getBoolean("vanillashader.noPrecompile");
+    private static int precompiled;
+    private static long precompileNanos;
+    private static boolean firstFrameReported;
+
     private ShaderRenderer() {
     }
 
@@ -134,6 +143,26 @@ public final class ShaderRenderer {
         /*NeoForge.EVENT_BUS.addListener(ShaderRenderer::onRenderStage);*/
         RenderScaler.init();
         AutoQuality.init();
+        NeoForge.EVENT_BUS.addListener((RenderFrameEvent.Post event) -> precompileStep());
+    }
+
+    /**
+     * Compiling every pass at once stalls the first frames in a world for a noticeable moment. While no world is open
+     * (title screen, world list, loading screen) this compiles one pass per frame instead, so they are ready by the
+     * time the world shows. A pass that fails here is simply tried again, and reported, when a world needs it.
+     */
+    private static void precompileStep() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!PRECOMPILE || precompiled >= PIPELINES.size() || minecraft.level != null || !minecraft.isGameLoadFinished()) {
+            return;
+        }
+        long start = System.nanoTime();
+        PIPELINES.get(precompiled++).compiles();
+        precompileNanos += System.nanoTime() - start;
+        if (precompiled == PIPELINES.size()) {
+            LOGGER.info("Vanilla Shader: compiled {} passes ahead of the first world in {} ms (one per frame)",
+                PIPELINES.size(), precompileNanos / 1_000_000);
+        }
     }
 
     /** Called from the GameRenderer mixin with the projection the level is drawn with this frame. */
@@ -278,7 +307,12 @@ public final class ShaderRenderer {
         RenderTarget fullSize = RenderScaler.fullSizeTarget();
         try {
             if (active()) {
+                long start = System.nanoTime();
                 render(captureFrame);
+                if (!firstFrameReported) {
+                    firstFrameReported = true;
+                    LOGGER.info("Vanilla Shader: first frame in a world took {} ms on the CPU", (System.nanoTime() - start) / 1_000_000);
+                }
             }
             if (fullSize != null) {
                 upscale(McCompat.mainTarget(), fullSize);

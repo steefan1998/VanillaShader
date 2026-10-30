@@ -107,6 +107,22 @@ vec4 rainbow(vec3 viewDir) {
     return vec4(bow * 0.3 + inside * vec3(1.0), 1.0 - darkBand * 0.06);
 }
 
+// After sunset (and before sunrise) the sky on the sun's side glows: deep red right at the horizon, turning pink and
+// violet higher up, over a wide arc around the sun's bearing (not around the sun itself, which is below the
+// horizon). RGB = the glow's colour, A = how strongly it shows in this direction.
+vec4 afterglow(vec3 viewDir) {
+    if (Twilight.x <= 0.001) {
+        return vec4(0.0);
+    }
+    vec3 dirWorld = viewToWorld(viewDir);
+    vec3 sunWorld = viewToWorld(Twilight.yzw);
+    float up = dirWorld.y;
+    float bearing = dot(normalize(dirWorld.xz + vec2(1e-5)), normalize(sunWorld.xz + vec2(1e-5))) * 0.5 + 0.5;
+    float band = (1.0 - smoothstep(0.0, 0.45, up)) * smoothstep(-0.15, 0.02, up);
+    vec3 glowColor = mix(vec3(0.95, 0.28, 0.12), vec3(0.75, 0.35, 0.6), smoothstep(0.03, 0.3, up));
+    return vec4(glowColor, Twilight.x * band * (0.25 + 0.75 * pow(bearing, 2.5)));
+}
+
 void main() {
     vec3 color = texture(SceneSampler, texCoord).rgb;
     float depth = texture(DepthSampler, texCoord).r;
@@ -140,6 +156,11 @@ void main() {
         }
         if (dhCloud) {
             color += color * LightColor.rgb * LightColor.w * pow(towardLight, 3.0) * 0.35;
+        }
+        // The afterglow tints by brightness rather than painting over, so clouds and stars keep their shape.
+        vec4 glow = afterglow(viewDir);
+        if (glow.a > 0.001) {
+            color = mix(color, glow.rgb * (0.35 + luma(color) * 1.2), min(glow.a, 1.0) * 0.8);
         }
         color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18
             + (pow(towardLight, 4.0) * 0.2 + pow(towardLight, 1.5) * 0.05) * golden * sunLike);
@@ -311,6 +332,9 @@ void main() {
         float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), mix(6.0, 3.5, sunsetSun));
         vec3 airColor = mix(HorizonColor.rgb, SkyColor.rgb, 0.35 * (1.0 - Weather.z));
         airColor = mix(airColor, vec3(0.95, 0.6, 0.3), sunsetSun * 0.6);
+        // After sunset the haze on the sun's side takes on the afterglow.
+        vec4 glow = afterglow(viewDir);
+        airColor = mix(airColor, glow.rgb * 0.6, min(glow.a, 1.0) * 0.6);
         vec3 scatter = mix(airColor, LightColor.rgb, towardLight * LightColor.w * (0.35 + 0.65 * Weather.z));
         color = mix(color, scatter, haze);
     }

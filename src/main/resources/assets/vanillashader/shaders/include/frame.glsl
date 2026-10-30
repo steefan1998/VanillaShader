@@ -28,6 +28,7 @@ layout(std140) uniform Frame {
                         // frame, 1 when its terrain is left alone, 2 when our effects shade it too
     vec4 Misc2;         // x = rainbow strength (0 = none), y/z = with Distant Horizons: horizontal distance where the
                         // chunks hand over to DH's terrain, w = cloud height (world Y)
+    vec4 Twilight;      // x = afterglow once the sun is below the horizon (0..1), yzw = the sun's direction in view space
     mat4 InvDhProj;     // Distant Horizons' inverse projection
 };
 

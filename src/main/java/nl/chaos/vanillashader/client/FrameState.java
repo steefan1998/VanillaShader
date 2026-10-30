@@ -40,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * {@code shaders/include/frame.glsl}. Keep both in sync.
  */
 final class FrameState {
-    static final int SIZE = 4 * 64 + (23 + DynamicLights.MAX_LIGHTS * 2) * 16;
+    static final int SIZE = 4 * 64 + (24 + DynamicLights.MAX_LIGHTS * 2) * 16;
     static final int MAX_FLASHES = 4;
 
     private static final int[] AO_SAMPLES = {0, 4, 8, 10, 14};
@@ -67,6 +67,8 @@ final class FrameState {
     private final Vector4f dhParams = new Vector4f();
     // x = rainbow, y/z = Distant Horizons fade distances, w = cloud height (frame.glsl's Misc2).
     private final Vector4f misc2 = new Vector4f();
+    // x = afterglow after sunset (before sunrise), yzw = the sun's direction in view space (frame.glsl's Twilight).
+    private final Vector4f twilight = new Vector4f();
     private float cloudHeight = 192.0F;
     private final Matrix4f dhInverseProjection = new Matrix4f();
     private static final int[] RT_RAYS = {2, 2, 3, 4, 6};
@@ -202,7 +204,10 @@ final class FrameState {
         Vector3f sunWorld = new Quaternionf().rotationY((float) Math.toRadians(-90.0)).rotateX(sunAngle).transform(new Vector3f(0, 1, 0));
         Vector3f moonWorld = new Quaternionf().rotationY((float) Math.toRadians(-90.0)).rotateX(moonAngle).transform(new Vector3f(0, 1, 0));
         float dayFactor = Mth.clamp(sunWorld.y * 5.0F + 0.5F, 0.0F, 1.0F);
-        float sunset = (1.0F - smoothstep(0.1F, 0.7F, sunWorld.y)) * smoothstep(-0.25F, -0.02F, sunWorld.y);
+        // Golden hour: the last stretch before the sun touches the horizon (from about 20 degrees up) and a little after.
+        float sunset = (1.0F - smoothstep(0.05F, 0.35F, sunWorld.y)) * smoothstep(-0.12F, -0.02F, sunWorld.y);
+        // Afterglow: once the sun is just below the horizon, the sky on its side glows red, fading as it sinks deeper.
+        float afterglow = smoothstep(-0.24F, -0.1F, sunWorld.y) * (1.0F - smoothstep(-0.04F, 0.02F, sunWorld.y));
 
         boolean useSun = sunWorld.y > -0.05F || moonWorld.y < 0.0F;
         Vector3f lightWorld = useSun ? sunWorld : moonWorld;
@@ -239,10 +244,12 @@ final class FrameState {
         if (!overworld || underwater > 1.5F) {
             intensity = 0.0F;
             sunset = 0.0F;
+            afterglow = 0.0F;
         }
         // A sun but no air (the moon and planets of Stellaris and the like): no golden hour and no haze.
         float airless = airless(level, overworld, dayFactor);
         sunset *= 1.0F - airless;
+        afterglow *= 1.0F - airless;
         // In the End, the sky flashes now and then: light (and shadows, god rays) from that direction while it lasts.
         if (endSky && endFlashIntensity > 0.01F && underwater < 1.5F) {
             endFlash = true;
@@ -256,6 +263,9 @@ final class FrameState {
         }
 
         Vector3f lightView = viewRotation.transformDirection(new Vector3f(lightWorld)).normalize();
+        // The afterglow follows the sun itself, also once the moon has taken over as the light; rain and cloud cover hide it.
+        Vector3f sunView = viewRotation.transformDirection(new Vector3f(sunWorld)).normalize();
+        twilight.set(endFlash ? 0.0F : afterglow * (1.0F - overcast * 0.8F), sunView.x, sunView.y, sunView.z);
         lightDir.set(lightView.x, lightView.y, lightView.z, intensity);
 
         Vector4f clip = projection.transform(new Vector4f(lightView.x * 100.0F, lightView.y * 100.0F, lightView.z * 100.0F, 1.0F));
@@ -399,6 +409,7 @@ final class FrameState {
         builder.putVec4(rayTracing);
         builder.putVec4(dhParams);
         builder.putVec4(misc2);
+        builder.putVec4(twilight);
         builder.putMat4f(dhInverseProjection);
     }
 
