@@ -15,12 +15,16 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.DimensionSpecialEffects;
 *///?}
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LightningBolt;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.phys.Vec3;
+import nl.chaos.vanillashader.compat.DistantHorizonsCompat;
 import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
 import nl.chaos.vanillashader.config.ShaderConfig;
@@ -29,13 +33,14 @@ import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-frame values shared by every pass, laid out as the std140 {@code Frame} block in
  * {@code shaders/include/frame.glsl}. Keep both in sync.
  */
 final class FrameState {
-    static final int SIZE = 3 * 64 + (21 + DynamicLights.MAX_LIGHTS * 2) * 16;
+    static final int SIZE = 4 * 64 + (23 + DynamicLights.MAX_LIGHTS * 2) * 16;
     static final int MAX_FLASHES = 4;
 
     private static final int[] AO_SAMPLES = {0, 4, 8, 10, 14};
@@ -59,6 +64,11 @@ final class FrameState {
     private final DynamicLights dynamicLights = new DynamicLights();
     private final Vector4f misc = new Vector4f();
     private final Vector4f rayTracing = new Vector4f();
+    private final Vector4f dhParams = new Vector4f();
+    // x = rainbow, y/z = Distant Horizons fade distances, w = cloud height (frame.glsl's Misc2).
+    private final Vector4f misc2 = new Vector4f();
+    private float cloudHeight = 192.0F;
+    private final Matrix4f dhInverseProjection = new Matrix4f();
     private static final int[] RT_RAYS = {2, 2, 3, 4, 6};
     private boolean endSky;
     private float sunAngle;
@@ -88,6 +98,11 @@ final class FrameState {
     private final float[] flashes = new float[MAX_FLASHES * 4];
     private float smoothedSkyLight = 1.0F;
     private float frameCounter;
+    // How wet the world is: builds up while it rains where the camera is and dries slowly afterwards.
+    private float wetness;
+    private long lastWetnessNanos = System.nanoTime();
+    private @Nullable ResourceKey<Level> airlessDimension;
+    private float airlessState;
 
     void setLevelProjection(Matrix4fc projection) {
         levelProjection.set(projection);
@@ -123,6 +138,7 @@ final class FrameState {
         }
         *///?} else
         skyColor.set(ARGB.redFloat(skyState.skyColor), ARGB.greenFloat(skyState.skyColor), ARGB.blueFloat(skyState.skyColor));
+        cloudHeight = state.cloudHeight;
     }
     //?} else {
     /*// 1.21.1 has no level render state: read the camera, the fog Minecraft set up for the terrain, and the level.
@@ -144,6 +160,7 @@ final class FrameState {
         moonAngle = sunAngle + Mth.PI;
         // The End only flashes from 1.21.9.
         endFlashIntensity = 0.0F;
+        cloudHeight = level.effects().getCloudHeight();
         Vec3 color = level.getSkyColor(cameraPos, partialTick);
         skyColor.set((float) color.x, (float) color.y, (float) color.z);
     }
@@ -223,6 +240,9 @@ final class FrameState {
             intensity = 0.0F;
             sunset = 0.0F;
         }
+        // A sun but no air (the moon and planets of Stellaris and the like): no golden hour and no haze.
+        float airless = airless(level, overworld, dayFactor);
+        sunset *= 1.0F - airless;
         // In the End, the sky flashes now and then: light (and shadows, god rays) from that direction while it lasts.
         if (endSky && endFlashIntensity > 0.01F && underwater < 1.5F) {
             endFlash = true;
@@ -285,7 +305,7 @@ final class FrameState {
             ShaderConfig.WARMTH.get() / 100.0F
         );
         look1.set(
-            ShaderConfig.ATMOSPHERE.get() / 100.0F,
+            ShaderConfig.ATMOSPHERE.get() / 100.0F * (1.0F - airless),
             ShaderConfig.WATER_REFLECTIVITY.get() / 100.0F,
             ShaderConfig.VIGNETTE.get() / 100.0F,
             hasWaterMask ? 1.0F : 0.0F
@@ -307,9 +327,22 @@ final class FrameState {
             dynamicLights.collect(null, cameraPos, partialTick, time);
         }
 
-        misc.set(maxTerrainY, dynamicLights.count(), 0.0F, 0.0F);
+        updateWetness(level, rain);
+        misc.set(maxTerrainY, dynamicLights.count(), wetness, brightSky(level, overworld));
+        // A rainbow needs sunlight on falling or just-fallen rain: the world wet, the rain light or over, and the sun
+        // low enough that the bow (42 degrees around the point opposite it) is above the horizon.
+        float bow = 0.0F;
+        if (useSun && !endFlash && overworld && underwater < 0.5F) {
+            float wet = smoothstep(0.15F, 0.5F, wetness) * (1.0F - smoothstep(0.5F, 0.9F, rain)) * (1.0F - thunder);
+            float sunHeight = smoothstep(-0.02F, 0.08F, sunWorld.y) * (1.0F - smoothstep(0.55F, 0.7F, sunWorld.y));
+            // A WeatherStory storm overhead hides the sun.
+            bow = wet * sunHeight * (1.0F - Math.max(storm, 0.0F));
+        }
+        misc2.x = bow;
+        // No clouds (NaN, e.g. the Nether): nothing is too high to be terrain.
+        misc2.w = Float.isFinite(cloudHeight) ? cloudHeight : 1.0E6F;
         // x = on, y = rays per pixel (follows the profile), z = how far rays travel in blocks.
-        boolean tracing = effects.enabled() && ShaderConfig.RAY_TRACING.get();
+        boolean tracing = effects.enabled() && ShaderConfig.rayTracing();
         rayTracing.set(tracing ? 1.0F : 0.0F, RT_RAYS[Math.max(effects.reflections(), 0)], 28.0F, 0.0F);
 
         // Vanilla lightning bolts (also the ones WeatherStory strikes on the ground) fill the remaining slots.
@@ -364,6 +397,71 @@ final class FrameState {
         }
         builder.putVec4(misc);
         builder.putVec4(rayTracing);
+        builder.putVec4(dhParams);
+        builder.putVec4(misc2);
+        builder.putMat4f(dhInverseProjection);
+    }
+
+    /**
+     * Distant Horizons' depth conventions for this frame, or null when it did not draw. With {@code shadeTerrain} off,
+     * DH's terrain is left alone and our effects fade out over the outer part of the render distance (in blocks),
+     * where the chunks meet it; on, DH's terrain is shaded too and only the shadows hand over there.
+     */
+    void setDistantHorizons(DistantHorizonsCompat.@Nullable Frame dh, float renderDistance, boolean shadeTerrain) {
+        if (dh == null) {
+            dhParams.set(0.0F);
+            dhInverseProjection.identity();
+            misc2.y = 0.0F;
+            misc2.z = 0.0F;
+        } else {
+            dhParams.set(dh.ndcScale(), dh.ndcOffset(), dh.reversedZ() ? 1.0F : 0.0F, shadeTerrain ? 2.0F : 1.0F);
+            dhInverseProjection.set(dh.inverseProjection());
+            // Where the chunks hand over to DH: our effects fade out there, or (shading DH too) the shadows give way to
+            // the lighting from facing that DH's terrain gets.
+            misc2.y = renderDistance * 0.6F;
+            misc2.z = renderDistance * 0.95F;
+        }
+    }
+
+    // A modded dimension whose sky stays (nearly) black while its sun is up has no atmosphere to scatter light: the
+    // golden hour colouring and the haze would paint a starry sky amber. 1 = airless. Judged while the sun is well
+    // up (every sky is dark at night) and remembered per dimension through sunset and the night.
+    private float airless(ClientLevel level, boolean daylight, float dayFactor) {
+        if (!daylight || level.dimension() == Level.OVERWORLD) {
+            return 0.0F;
+        }
+        if (level.dimension() != airlessDimension) {
+            airlessDimension = level.dimension();
+            airlessState = 0.0F;
+        }
+        if (dayFactor > 0.6F) {
+            float skyLuma = 0.2126F * skyColor.x + 0.7152F * skyColor.y + 0.0722F * skyColor.z;
+            airlessState = 1.0F - smoothstep(0.03F, 0.12F, skyLuma);
+        }
+        return airlessState;
+    }
+
+    // Modded sky dimensions with an almost white sky and fog (The Aether II and the like): the haze, bloom and exposure
+    // tuned for the Overworld's blue-grey air wash those out to white, so they are toned down there. 0 = not at all.
+    private float brightSky(ClientLevel level, boolean daylight) {
+        if (!daylight || level.dimension() == Level.OVERWORLD) {
+            return 0.0F;
+        }
+        float fogLuma = 0.2126F * fogColor.x + 0.7152F * fogColor.y + 0.0722F * fogColor.z;
+        return smoothstep(0.72F, 0.92F, fogLuma);
+    }
+
+    // Only rain makes things wet: not snow, not deserts, not the Nether. Checked on top of the camera's column, so
+    // standing under a roof still sees the street outside get wet. About 20 s to soak, a minute to dry.
+    private void updateWetness(ClientLevel level, float rain) {
+        long now = System.nanoTime();
+        float seconds = Mth.clamp((now - lastWetnessNanos) / 1.0E9F, 0.0F, 0.25F);
+        lastWetnessNanos = now;
+        BlockPos top = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, BlockPos.containing(cameraPos));
+        float target = rain > 0.0F && level.isRainingAt(top) ? rain : 0.0F;
+        wetness = target > wetness
+            ? Math.min(target, wetness + seconds / 20.0F)
+            : Math.max(target, wetness - seconds / 60.0F);
     }
 
     private static float smoothstep(float edge0, float edge1, float x) {

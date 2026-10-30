@@ -148,6 +148,8 @@ dependencies {
     // Sodium is optional: we only compile against its config API, it is never required at runtime.
     sodiumMod("maven.modrinth:sodium:${prop("deps.sodium")}")
     compileOnly(files(extractSodiumApi).asFileTree.matching { include("*.jar") })
+    // Distant Horizons is optional too; its API jar is the same for every Minecraft version.
+    compileOnly("maven.modrinth:distanthorizonsapi:${prop("deps.distanthorizons_api")}")
     if (sc.current.parsed < "26.1") {
         // Minecraft only ships JSpecify from 26.1 on.
         compileOnly("org.jspecify:jspecify:1.0.0")

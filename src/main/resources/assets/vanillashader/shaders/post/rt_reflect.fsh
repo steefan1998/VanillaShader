@@ -57,9 +57,10 @@ void main() {
 
     float dist = length(position);
     vec3 viewDir = position / dist;
-    // Rougher surfaces scatter the reflection a little per pixel; the denoise and FSR smooth it out.
+    // Rougher surfaces scatter the reflection a little per pixel; the denoise and FSR smooth it out. Kept small:
+    // a wider spread sends neighbouring rays to the sky and to the ground, which no blur can hide.
     vec3 jitter = vec3(gradientNoise(gl_FragCoord.xy), gradientNoise(gl_FragCoord.yx + 7.3), gradientNoise(gl_FragCoord.xy + 3.1)) - 0.5;
-    vec3 n = normalize(normal + jitter * roughness * 2.0);
+    vec3 n = normalize(normal + jitter * roughness);
     vec3 reflected = reflect(viewDir, n);
     float fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(-viewDir, n), 0.0), 5.0);
 

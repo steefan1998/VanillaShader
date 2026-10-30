@@ -92,7 +92,7 @@ final class DynamicLights {
         blockLights.addTo(placed);
         placed.removeIf(light -> distanceSqr(light, camera) > BLOCK_RANGE * BLOCK_RANGE);
         // Ray-traced lighting already lights the world from placed light blocks; adding them here too doubles it.
-        if (ShaderConfig.RAY_TRACING.get()) {
+        if (ShaderConfig.rayTracing()) {
             placed.clear();
         }
         placed.sort(Comparator.comparingDouble(light -> distanceSqr(light, camera)));

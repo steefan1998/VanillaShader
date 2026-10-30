@@ -16,7 +16,9 @@ import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import nl.chaos.vanillashader.client.DevCapture;
+import nl.chaos.vanillashader.client.DistantHorizonsPrompt;
 import nl.chaos.vanillashader.client.ShaderRenderer;
+import nl.chaos.vanillashader.compat.DistantHorizonsCompat;
 import nl.chaos.vanillashader.config.Profile;
 import nl.chaos.vanillashader.config.ShaderConfig;
 
@@ -39,6 +41,7 @@ public final class VanillaShader {
         modBus.addListener(VanillaShader::registerKeys);
         NeoForge.EVENT_BUS.addListener(VanillaShader::clientTick);
         ShaderRenderer.init();
+        DistantHorizonsCompat.init();
         DevCapture.init();
     }
 
@@ -54,6 +57,8 @@ public final class VanillaShader {
 
     private static void clientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
+        DistantHorizonsCompat.tick();
+        DistantHorizonsPrompt.tick(minecraft);
         while (CYCLE_PROFILE.consumeClick()) {
             Profile next = ShaderConfig.PROFILE.get().next();
             ShaderConfig.setProfile(next);

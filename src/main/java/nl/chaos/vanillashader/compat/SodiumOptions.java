@@ -31,6 +31,7 @@ public final class SodiumOptions implements ConfigEntryPoint {
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
         Function<ConfigState, Boolean> isCustom = state -> state.readEnumOption(PROFILE, Profile.class) == Profile.CUSTOM;
+        Function<ConfigState, Boolean> isAuto = state -> state.readEnumOption(PROFILE, Profile.class) == Profile.AUTO;
 
         OptionGroupBuilder profileGroup = builder.createOptionGroup()
             .setName(Component.translatable("vanillashader.config.profile"))
@@ -42,6 +43,16 @@ public final class SodiumOptions implements ConfigEntryPoint {
                 .setDefaultValue(Profile.HIGH)
                 .setStorageHandler(ShaderConfig.SPEC::save)
                 .setBinding(ShaderConfig.PROFILE::set, ShaderConfig.PROFILE::get))
+            .addOption(builder.createIntegerOption(VanillaShader.id("auto_target_fps"))
+                .setName(Component.translatable("vanillashader.config.auto_target_fps"))
+                .setTooltip(Component.translatable("vanillashader.config.auto_target_fps.tooltip"))
+                .setRange(30, 240, 5)
+                .setValueFormatter(fps -> Component.translatable("vanillashader.config.auto_target_fps.value", fps))
+                .setImpact(OptionImpact.VARIES)
+                .setDefaultValue(ShaderConfig.AUTO_TARGET_FPS.getDefault())
+                .setEnabledProvider(isAuto, PROFILE)
+                .setStorageHandler(ShaderConfig.SPEC::save)
+                .setBinding(ShaderConfig.AUTO_TARGET_FPS::set, ShaderConfig.AUTO_TARGET_FPS::get))
             .addOption(builder.createBooleanOption(VanillaShader.id("ray_tracing"))
                 .setName(Component.translatable("vanillashader.config.ray_tracing"))
                 .setTooltip(Component.translatable("vanillashader.config.ray_tracing.tooltip"))
@@ -56,6 +67,29 @@ public final class SodiumOptions implements ConfigEntryPoint {
                 .setDefaultValue(true)
                 .setStorageHandler(ShaderConfig.SPEC::save)
                 .setBinding(ShaderConfig.DYNAMIC_LIGHTS::set, ShaderConfig.DYNAMIC_LIGHTS::get));
+        if (DistantHorizonsCompat.isLoaded()) {
+            profileGroup.addOption(builder.createBooleanOption(VanillaShader.id("distant_horizons"))
+                .setName(Component.translatable("vanillashader.config.distant_horizons"))
+                .setTooltip(Component.translatable("vanillashader.config.distant_horizons.tooltip"))
+                .setImpact(OptionImpact.HIGH)
+                .setDefaultValue(true)
+                .setStorageHandler(ShaderConfig.SPEC::save)
+                .setBinding(ShaderConfig.DISTANT_HORIZONS::set, ShaderConfig.DISTANT_HORIZONS::get));
+            profileGroup.addOption(builder.createBooleanOption(VanillaShader.id("distant_horizons_ask"))
+                .setName(Component.translatable("vanillashader.config.distant_horizons_ask"))
+                .setTooltip(Component.translatable("vanillashader.config.distant_horizons_ask.tooltip"))
+                .setImpact(OptionImpact.LOW)
+                .setDefaultValue(true)
+                .setStorageHandler(ShaderConfig.SPEC::save)
+                .setBinding(ShaderConfig.DISTANT_HORIZONS_ASK::set, ShaderConfig.DISTANT_HORIZONS_ASK::get));
+            profileGroup.addOption(builder.createBooleanOption(VanillaShader.id("distant_horizons_shading"))
+                .setName(Component.translatable("vanillashader.config.distant_horizons_shading"))
+                .setTooltip(Component.translatable("vanillashader.config.distant_horizons_shading.tooltip"))
+                .setImpact(OptionImpact.LOW)
+                .setDefaultValue(true)
+                .setStorageHandler(ShaderConfig.SPEC::save)
+                .setBinding(ShaderConfig.DISTANT_HORIZONS_SHADING::set, ShaderConfig.DISTANT_HORIZONS_SHADING::get));
+        }
 
         OptionGroupBuilder customGroup = builder.createOptionGroup()
             .setName(Component.translatable("vanillashader.config.custom"))

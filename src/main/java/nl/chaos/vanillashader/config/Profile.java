@@ -4,7 +4,8 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Graphics presets. Each preset fixes the quality level (0 = off .. 4 = ultra) of every effect;
- * {@link #CUSTOM} uses the per-effect values from the config instead.
+ * {@link #AUTO} picks between the presets to hold a target frame rate, and {@link #CUSTOM} uses the per-effect
+ * values from the config instead.
  */
 public enum Profile {
     OFF(0, 0, 0, 0, 0),
@@ -12,6 +13,7 @@ public enum Profile {
     MEDIUM(1, 2, 1, 2, 1),
     HIGH(3, 3, 3, 3, 3),
     MAX(4, 4, 4, 4, 4),
+    AUTO(-1, -1, -1, -1, -1),
     CUSTOM(-1, -1, -1, -1, -1);
 
     private final int ambientOcclusion;

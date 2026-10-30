@@ -4,6 +4,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import nl.chaos.vanillashader.client.AutoQuality;
 
 /**
  * Client config. The profile decides how expensive the effects are; the "look" values
@@ -13,6 +14,7 @@ public final class ShaderConfig {
     public static final ModConfigSpec SPEC;
 
     public static final ModConfigSpec.EnumValue<Profile> PROFILE;
+    public static final ModConfigSpec.IntValue AUTO_TARGET_FPS;
 
     public static final ModConfigSpec.IntValue AMBIENT_OCCLUSION;
     public static final ModConfigSpec.IntValue REFLECTIONS;
@@ -29,6 +31,9 @@ public final class ShaderConfig {
     public static final ModConfigSpec.IntValue VIGNETTE;
 
     public static final ModConfigSpec.BooleanValue WEATHER_INTEGRATION;
+    public static final ModConfigSpec.BooleanValue DISTANT_HORIZONS;
+    public static final ModConfigSpec.BooleanValue DISTANT_HORIZONS_ASK;
+    public static final ModConfigSpec.BooleanValue DISTANT_HORIZONS_SHADING;
 
     // Render scale per profile (OFF always renders at native resolution).
     public static final Map<Profile, ModConfigSpec.EnumValue<RenderScale>> RENDER_SCALE = new EnumMap<>(Profile.class);
@@ -41,9 +46,14 @@ public final class ShaderConfig {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
         PROFILE = builder
-            .comment("Graphics profile: OFF, LOW, MEDIUM, HIGH, MAX, or CUSTOM to use the values in the 'custom' section.")
+            .comment("Graphics profile: OFF, LOW, MEDIUM, HIGH, MAX, AUTO to adjust quality to hold autoTargetFps, or CUSTOM to use the values in the 'custom' section.")
             .translation("vanillashader.config.profile")
             .defineEnum("profile", Profile.HIGH);
+
+        AUTO_TARGET_FPS = builder
+            .comment("Frame rate the AUTO profile aims for: it lowers effects and render scale below it and raises them while it holds.")
+            .translation("vanillashader.config.auto_target_fps")
+            .defineInRange("autoTargetFps", 60, 30, 240);
 
         builder.comment("Per-effect quality (0 = off, 4 = ultra). Only used when profile = CUSTOM.")
             .translation("vanillashader.config.custom")
@@ -82,6 +92,21 @@ public final class ShaderConfig {
             .translation("vanillashader.config.weather_integration")
             .define("weatherStoryIntegration", true);
 
+        DISTANT_HORIZONS = builder
+            .comment("When Distant Horizons is installed: draw its far-away terrain. Off turns DH's rendering off (its own setting comes back when this is on again).")
+            .translation("vanillashader.config.distant_horizons")
+            .define("distantHorizons", true);
+
+        DISTANT_HORIZONS_ASK = builder
+            .comment("When Distant Horizons is installed: ask at every game start whether to draw it this time.")
+            .translation("vanillashader.config.distant_horizons_ask")
+            .define("distantHorizonsAskOnStartup", true);
+
+        DISTANT_HORIZONS_SHADING = builder
+            .comment("When Distant Horizons is installed: also shade its far-away terrain (haze, sunset silhouettes, colour grading). Off leaves it as DH draws it, with our effects fading out towards the render distance.")
+            .translation("vanillashader.config.distant_horizons_shading")
+            .define("distantHorizonsShading", true);
+
         builder.comment("Render the world at a lower resolution and upscale it with AMD FSR 1, set per profile. The HUD always stays sharp.")
             .translation("vanillashader.config.upscaling")
             .push("upscaling");
@@ -112,8 +137,21 @@ public final class ShaderConfig {
         if (profile == Profile.CUSTOM) {
             return new Effects(true, AMBIENT_OCCLUSION.get(), REFLECTIONS.get(), GOD_RAYS.get(), BLOOM.get(), SHADOWS.get(), renderScale(profile));
         }
+        if (profile == Profile.AUTO) {
+            return AutoQuality.effects();
+        }
+        return effectsOf(profile);
+    }
+
+    /** A fixed preset's levels with its configured render scale. */
+    public static Effects effectsOf(Profile profile) {
         Profile.QualityLevels levels = profile.levels();
         return new Effects(profile != Profile.OFF, levels.ambientOcclusion(), levels.reflections(), levels.godRays(), levels.bloom(), levels.shadows(), renderScale(profile));
+    }
+
+    /** Whether ray-traced lighting runs: the toggle, except where the Auto profile has stepped down too far for it. */
+    public static boolean rayTracing() {
+        return RAY_TRACING.get() && (PROFILE.get() != Profile.AUTO || AutoQuality.allowsRayTracing());
     }
 
     private static RenderScale renderScale(Profile profile) {

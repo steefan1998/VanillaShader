@@ -14,8 +14,12 @@ uniform sampler2D RtReflectSampler;      // half res: ray-traced glossy reflecti
 uniform sampler2D OpaqueColorSampler;   // level after opaque geometry
 uniform sampler2D FeatureColorSampler;  // ...and after translucent features (WeatherStory mist and sand wisps)
 uniform sampler2D ShadowMapSampler;     // height map, also marks which columns have water on top
+uniform sampler2D DhMaskSampler;        // Distant Horizons terrain where the depth shows sky: RG = distance,
+                                        // B = sun facing, A > 0.5; A = 0.25 on DH's clouds (see dh_mask.fsh)
 
 #moj_import <vanillashader:terrain.glsl>
+#moj_import <vanillashader:rain.glsl>
+#moj_import <vanillashader:reflect.glsl>
 
 in vec2 texCoord;
 
@@ -84,12 +88,41 @@ vec3 goldenHour(vec3 color, vec3 viewDir, float sunLike, float shape) {
     return amber * mix(0.7 + 0.35 * sunSide, min(luma(color) * 2.2 + 0.2, 1.3), shape);
 }
 
+// Light added by a rainbow along this view direction: the primary bow 40-42 degrees around the point opposite the
+// sun (red outside, violet inside), a fainter secondary bow at 51-54 degrees with the colours reversed, a little
+// extra light inside the primary and Alexander's darker band between the two (returned in w, as a multiplier).
+vec4 rainbow(vec3 viewDir) {
+    float angle = degrees(acos(clamp(dot(viewDir, -LightDir.xyz), -1.0, 1.0)));
+    float primary = (angle - 40.0) / 2.4;
+    float secondary = (54.0 - angle) / 3.2;
+    vec3 bow = vec3(0.0);
+    if (primary > 0.0 && primary < 1.0) {
+        bow += spectrum(primary) * sin(primary * 3.14159);
+    }
+    if (secondary > 0.0 && secondary < 1.0) {
+        bow += spectrum(secondary) * sin(secondary * 3.14159) * 0.4;
+    }
+    float inside = (1.0 - smoothstep(30.0, 40.0, angle)) * smoothstep(5.0, 30.0, angle) * 0.08;
+    float darkBand = smoothstep(42.4, 44.0, angle) * (1.0 - smoothstep(49.0, 51.0, angle));
+    return vec4(bow * 0.3 + inside * vec3(1.0), 1.0 - darkBand * 0.06);
+}
+
 void main() {
     vec3 color = texture(SceneSampler, texCoord).rgb;
     float depth = texture(DepthSampler, texCoord).r;
     bool underwater = Weather.w > 0.5 && Weather.w < 1.5;
+    // Distant Horizons' terrain is sky to the depth buffer, but must never get the sky's colouring. By default it is
+    // left exactly as DH draws it; A = how much of our image a pixel keeps, which the final pass uses to leave the
+    // grading off it as well. With "shade Distant Horizons terrain" on (DhParams.w = 2) it gets the haze, silhouettes
+    // and grading of terrain instead, at its real distance.
+    vec4 distantMask = texture(DhMaskSampler, texCoord);
+    bool distant = isSky(depth) && distantMask.a > 0.5;
+    if (distant && DhParams.w < 1.5) {
+        fragColor = vec4(color, 0.0);
+        return;
+    }
 
-    if (isSky(depth)) {
+    if (isSky(depth) && !distant) {
         // Soft glow around the sun so it blooms like a real light source.
         vec3 viewDir = normalize(viewPosFromDepth(texCoord, FAR_DEPTH)); // far away, so view bobbing's small sideways shift does not swing it; the far plane itself can be degenerate
         float towardLight = max(dot(viewDir, LightDir.xyz), 0.0);
@@ -97,33 +130,77 @@ void main() {
         // The moon is bluish (blue > red), so its side of the sky gets no sun lobe during twilight.
         float sunLike = step(LightColor.b, LightColor.r);
         float golden = Weather.z * (1.0 - Weather.x) * smoothstep(24.0, 128.0, Quality1.z); // not in rain or thick fog
+        // Distant Horizons' clouds are lit like clouds rather than coloured like the sky behind them: they keep more
+        // of their own shape and catch the low sun.
+        bool dhCloud = distantMask.a > 0.1 && distantMask.a < 0.5;
         if (golden > 0.001) {
             // The sun disc itself (the brightest pixels) stays visible through the colouring.
             float disc = smoothstep(0.75, 0.95, luma(color));
-            color = mix(color, goldenHour(color, viewDir, sunLike, 0.35), min(golden * 1.6, 1.0) * 0.9 * (1.0 - disc));
+            color = mix(color, goldenHour(color, viewDir, sunLike, dhCloud ? 0.65 : 0.35), min(golden * 1.6, 1.0) * (dhCloud ? 0.75 : 0.9) * (1.0 - disc));
+        }
+        if (dhCloud) {
+            color += color * LightColor.rgb * LightColor.w * pow(towardLight, 3.0) * 0.35;
         }
         color += LightColor.rgb * LightColor.w * (pow(towardLight, 24.0) * 0.18
             + (pow(towardLight, 4.0) * 0.2 + pow(towardLight, 1.5) * 0.05) * golden * sunLike);
+        if (Misc2.x > 0.001) {
+            vec4 bow = rainbow(viewDir);
+            color = color * mix(1.0, bow.w, Misc2.x) + bow.rgb * Misc2.x * LightColor.w * HorizonColor.w;
+        }
         fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
         return;
     }
 
-    vec3 position = viewPosFromDepth(texCoord, depth);
+    // DH's terrain lies along the same ray as the sky would (view bobbing's sideways shift does not matter that far).
+    vec3 position = distant
+        ? normalize(viewPosFromDepth(texCoord, FAR_DEPTH)) * max(unpackFarDistance(distantMask.rg), 1.0)
+        : viewPosFromDepth(texCoord, depth);
     float dist = length(position);
     vec3 viewDir = position / dist;
     // Effects fade out behind fog: in WeatherStory's mist there is barely any direct light or reflection to see.
-    float fog = vanillaFog(viewToWorld(position));
-    vec4 lightingBuffer;
-    vec4 pointBuffer;
-    vec4 tracedLight;
-    upsampleLighting(dist, lightingBuffer, pointBuffer, tracedLight);
+    // DH's terrain lies beyond the render distance fog by definition; only real (environmental) fog counts there.
+    float fog = distant
+        ? clamp((dist - FogParams.x) / max(FogParams.y - FogParams.x, 1e-3), 0.0, 1.0)
+        : vanillaFog(viewToWorld(position));
+    vec4 lightingBuffer = vec4(1.0);
+    vec4 pointBuffer = vec4(0.0);
+    vec4 tracedLight = vec4(0.0);
+    if (!distant) {
+        upsampleLighting(dist, lightingBuffer, pointBuffer, tracedLight);
+    }
 
     // Water comes from its own half-resolution pass; only apply it where this pixel really is translucent so the
     // blurrier edges of that buffer stay off the shore.
     float veil = 0.0;
     vec4 water = texture(WaterSampler, texCoord);
     vec3 opaque = viewPosFromDepth(texCoord, texture(OpaqueDepthSampler, texCoord).r);
-    if (water.a > 0.002 && position.z - opaque.z > 0.02) {
+    if (distant) {
+        // The lighting, water and reflection buffers know nothing about DH's terrain, and the shadow map does not
+        // reach it. It is lit from its own facing instead (dh_mask.fsh): the sunny side warm, the far side in the
+        // cool shade of the sky, a little softer than near terrain since DH already shades its faces.
+        float strength = LightDir.w * (1.0 - Weather.y * 0.6) * Quality1.w * smoothstep(24.0, 160.0, Quality1.z) * (1.0 - fog);
+        if (Quality1.x > 0.0 && strength > 0.01) {
+            float visibility = smoothstep(0.45, 0.65, distantMask.b);
+            vec3 shade = vec3(0.52, 0.58, 0.72);
+            vec3 sunlit = vec3(1.0) + (LightColor.rgb - 0.85) * mix(0.15, 0.5, Weather.z);
+            color *= mix(vec3(1.0), mix(shade, sunlit, visibility), strength * 0.6);
+        }
+        // Rain soaks DH's terrain too, its tops most.
+        float up = clamp((distantMask.a - 0.6) / 0.4, 0.0, 1.0);
+        color *= mix(1.0, 0.8, Misc.z * mix(0.45, 1.0, up) * (1.0 - fog));
+        // DH does not say which LODs are water; seas and lakes at sea level are flat, level with it and blue. They
+        // reflect the sky and the sun like near water (without the screen-space part, which does not reach that far).
+        float height = viewToWorld(position).y + CameraPos.y;
+        if (Quality0.y >= 0.0 && up > 0.97 && height > 61.0 && height < 64.5 && color.b > color.r * 1.1 && color.b > color.g * 0.95) {
+            vec3 reflected = reflect(viewDir, viewUp());
+            float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(-viewDir, viewUp()), 0.0), 5.0);
+            float blend = clamp(mix(0.12, 1.0, fresnel) * Look1.y, 0.0, 0.92) * (1.0 - fog);
+            float towardSun = max(dot(reflected, LightDir.xyz), 0.0);
+            float glint = pow(towardSun, 90.0) * 0.9 + pow(towardSun, 60.0) * 0.25;
+            color = mix(color * mix(1.0, 0.72, Look1.y), skyRadiance(reflected), blend)
+                + LightColor.rgb * LightColor.w * glint * Look1.y * HorizonColor.w * (1.0 - fog);
+        }
+    } else if (water.a > 0.002 && position.z - opaque.z > 0.02) {
         vec3 deep = color * mix(1.0, 0.72, Look1.y);
         color = deep * (1.0 - water.a) + water.rgb * 2.0;
     } else {
@@ -138,6 +215,16 @@ void main() {
         float strength = LightDir.w * (clouds ? 1.0 : 1.0 - Weather.y * 0.6) * Quality1.w * smoothstep(24.0, 160.0, Quality1.z);
         if (Quality1.x > 0.0 && strength > 0.01) {
             float visibility = lightingBuffer.g;
+            // Shaded Distant Horizons terrain is lit from its facing alone; over the outer part of the render distance
+            // the chunks' shadows hand over to that, so the two meet without a seam.
+            if (DhParams.w > 1.5) {
+                float handover = smoothstep(Misc2.y, Misc2.z, length(viewToWorld(position).xz));
+                if (handover > 0.0) {
+                    float facing = smoothstep(-0.1, 0.3, dot(normalFromDepth(DepthSampler, texCoord, position), LightDir.xyz));
+                    visibility = mix(visibility, facing, handover);
+                    strength *= mix(1.0, 0.6, handover);
+                }
+            }
             // Shade is lit by the blue sky; sunlit surfaces pick up a hint of the sun's colour.
             vec3 shade = vec3(0.52, 0.58, 0.72);
             // ...strongly at golden hour, when the low sun paints everything it reaches orange.
@@ -145,6 +232,22 @@ void main() {
             lighting *= mix(vec3(1.0), mix(shade, sunlit, visibility), strength);
         }
         color = max(color - base * (1.0 - lighting) * (1.0 - veil) * (1.0 - fog), 0.0);
+        // Rain soaks everything it falls on: wet surfaces turn darker and a little more saturated (tops more than
+        // walls), and puddles from the water pass reflect the sky.
+        if (Misc.z > 0.01) {
+            vec3 world = viewToWorld(position) + CameraPos.xyz;
+            vec3 normalWorld = viewToWorld(normalFromDepth(DepthSampler, texCoord, position));
+            float exposed = rainExposure(world + normalWorld * 0.1);
+            float soak = Misc.z * exposed * (1.0 - fog) * (1.0 - veil) * mix(0.45, 1.0, clamp(normalWorld.y, 0.0, 1.0));
+            if (soak > 0.001) {
+                color *= mix(1.0, 0.74, soak);
+                color = max(mix(vec3(luma(color)), color, 1.0 + 0.2 * soak), 0.0);
+                // The water buffer is half resolution; only use it inside a puddle, so water does not bleed onto the shore.
+                if (water.a > 0.002 && normalWorld.y > 0.9 && puddleMask(world.xz, Misc.z) > 0.02) {
+                    color = color * (1.0 - water.a) + water.rgb * 2.0;
+                }
+            }
+        }
         // Ray-traced reflections on glossy blocks (obsidian, metal, glass, polished stone).
         vec4 traced = texture(RtReflectSampler, texCoord);
         if (traced.a > 0.002) {
@@ -153,7 +256,7 @@ void main() {
     }
 
     // Under water, sunlight through the waves draws caustics on the bottom and walls, fading with depth and fog.
-    if (underwater && LightDir.w > 0.01) {
+    if (underwater && !distant && LightDir.w > 0.01) {
         vec3 world = viewToWorld(position) + CameraPos.xyz;
         float outdoors = 1.0 - undergroundFactor(world);
         vec3 normal = normalFromDepth(DepthSampler, texCoord, position);
@@ -202,12 +305,22 @@ void main() {
         float haze = (1.0 - exp(-dist * density)) * 0.6;
         // Where WeatherStory already fogs the view (mist, sandstorms), our haze would only wash it out further.
         haze *= (1.0 - veil) * smoothstep(24.0, 128.0, Quality1.z);
+        // Under a white sky (The Aether) the haze would bury the terrain in white.
+        haze *= mix(1.0, 0.3, Misc.w);
         // At sunset the glow around the sun is wider and the air itself turns amber.
         float towardLight = pow(max(dot(viewDir, LightDir.xyz), 0.0), mix(6.0, 3.5, sunsetSun));
         vec3 airColor = mix(HorizonColor.rgb, SkyColor.rgb, 0.35 * (1.0 - Weather.z));
         airColor = mix(airColor, vec3(0.95, 0.6, 0.3), sunsetSun * 0.6);
         vec3 scatter = mix(airColor, LightColor.rgb, towardLight * LightColor.w * (0.35 + 0.65 * Weather.z));
         color = mix(color, scatter, haze);
+    }
+
+    // The rainbow also stands in front of hills further away, where the rain between them and the viewer catches the
+    // sun; never on nearby blocks.
+    if (Misc2.x > 0.001 && !underwater) {
+        vec4 bow = rainbow(viewDir);
+        float far = smoothstep(48.0, 160.0, dist) * (1.0 - veil);
+        color += bow.rgb * Misc2.x * LightColor.w * HorizonColor.w * far * 0.7;
     }
 
     // Clouds catch the low sun as well: anything floating far above the terrain glows orange at golden hour.
@@ -221,5 +334,13 @@ void main() {
         color = mix(color, goldenHour(color, viewDir, 1.0, 0.5), cloud * min(sunsetSun * 1.6, 1.0) * 0.85);
     }
 
-    fragColor = vec4(finiteOr(color, texture(SceneSampler, texCoord).rgb), 1.0);
+    // With Distant Horizons left alone, our effects fade out towards the render distance, so the chunks blend into
+    // DH's terrain instead of meeting it in a hard seam (no fade when DH's terrain is shaded too).
+    vec3 scene = texture(SceneSampler, texCoord).rgb;
+    float shaded = 1.0;
+    if (DhParams.w > 0.5 && DhParams.w < 1.5) {
+        shaded = 1.0 - smoothstep(Misc2.y, Misc2.z, length(viewToWorld(position).xz));
+        color = mix(scene, color, shaded);
+    }
+    fragColor = vec4(finiteOr(color, scene), shaded);
 }

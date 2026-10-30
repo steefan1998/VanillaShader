@@ -1,8 +1,8 @@
 # Vanilla Shader
 
 A NeoForge mod for Minecraft **1.21.1, 26.1.2, 26.2 and 26.3** that gives the game a vibrant, shader-like look while staying compatible
-with **Sodium** and **WeatherStory**. Everything is post-processing on top of the normal renderer, so no shader pack
-loader is needed.
+with **Sodium**, **WeatherStory** and **Distant Horizons**. Everything is post-processing on top of the normal renderer, so no
+shader pack loader is needed.
 
 ![Sunset over a forest with Vanilla Shader on Max](docs/screenshots/sunset.jpg)
 
@@ -22,7 +22,11 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
 
 ## Features
 
-- **Graphics profiles:** Off, Low, Medium, High, Max and Custom. Press **F6** to cycle them in game.
+- **Graphics profiles:** Off, Low, Medium, High, Max, Auto and Custom. Press **F6** to cycle them in game.
+- **Auto profile:** measures the frame rate while you play and steps effects and FSR render scale up or down to hold
+  a target frame rate (30 to 240 FPS, a slider in the settings). It takes vsync and Minecraft's frame rate limit into
+  account, does not keep bouncing between two steps, and does not lower quality when that would not help (when the
+  CPU is what holds the frame rate back).
 - **Sun shadows:** cast by terrain, trees and buildings, including occluders off screen. Short contact shadows add fine detail.
 - **Cloud shadows:** from WeatherStory's clouds. With Sodium installed this mod draws them, because WeatherStory's own terrain shader is replaced by Sodium.
 - **Water:**
@@ -37,7 +41,20 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
   - torches, lanterns, glowstone and other light sources, whether held, dropped or placed;
   - glowing mobs, as bright as they glow (the Warden's heartbeat, a creeper about to explode, Enderman eyes, Blazes, glow squids, fireballs, ...);
   - lightning.
+- **Rain:** what the rain falls on turns wet and darker, puddles form on open ground and reflect the sky, and drops
+  ripple water and puddles. It dries up again after the rain.
+- **Rainbows:** when the sun breaks through rain or wet air, a primary and a fainter secondary bow appear opposite
+  the sun.
+- **Other dimensions:** modded sky dimensions with a white sky (The Aether II) get less haze and bloom; airless ones
+  (the moons and planets of Stellaris) get no golden hour or haze.
 - **WeatherStory integration:** mist and sandstorms keep their look, and clouds and storms dim the sun effects.
+- **Distant Horizons integration** (DH 3.3 or newer):
+  - its far-away terrain is shaded like the rest: haze at its real distance, sunny and shaded sides, sunset
+    silhouettes, sky reflections on distant seas, and lit clouds; or, with that setting off, left exactly as DH draws
+    it while our effects fade out towards the render distance;
+  - the chunks' shadows hand over smoothly to the distant terrain;
+  - a switch in the settings turns DH's drawing off and on (DH's own settings are left alone), and at game start a
+    prompt asks whether to use DH this time (with "don't show again").
 - **AMD FSR 1 upscaling:** a render scale per profile and a sharpness slider. The HUD always stays sharp.
 - **Settings:** in Sodium's Video Settings (a "Vanilla Shader" page) or in NeoForge's config screen. The Look page has a reset button.
 - **Languages:** English, Dutch, German, French, Spanish, Brazilian Portuguese, Italian, Polish, Russian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese and Korean.
@@ -57,7 +74,8 @@ On 26.2 and 26.3 the mod works with both graphics APIs, OpenGL and Vulkan. On 26
 with Vulkan when its early loading screen is off (`earlyWindowControl = false` in `config/fml.toml`); that is not
 specific to this mod.
 
-The mod turns itself off while an Iris shader pack is active.
+Distant Horizons is optional, from version 3.3 (all four Minecraft versions). The mod turns itself off while an Iris
+shader pack is active.
 
 ## Building
 

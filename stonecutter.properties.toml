@@ -1,9 +1,11 @@
 mod.id = "vanillashader"
 mod.name = "Vanilla Shader"
-mod.version = "1.1.0"
+mod.version = "1.2.0"
 mod.group = "nl.chaos.vanillashader"
 mod.authors = "Stefan / Claude Code"
 mod.description = "Vibrant-style visuals (bloom, god rays, water reflections, color grading) with Low/Medium/High/Max quality profiles."
+# Distant Horizons' API jar (DH 3.3+), the same for every Minecraft version; only compiled against.
+deps.distanthorizons_api = "7.2.0"
 
 # Per version: the accepted Minecraft/NeoForge range in neoforge.mods.toml, the NeoForge to build against and the
 # Sodium release whose config API we compile against (and which dev runs load).

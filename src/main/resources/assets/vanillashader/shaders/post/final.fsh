@@ -27,6 +27,10 @@ void main() {
         uv += vec2(sin(uv.y * 23.0 + t * 2.1), cos(uv.x * 19.0 + t * 1.7)) * 0.0022;
     }
     vec3 color = texture(LitSampler, uv).rgb;
+    // With Distant Horizons the composite says per pixel how much of our image it keeps (0 on DH's terrain, fading
+    // out towards the render distance); the bloom, rays and grading follow it.
+    vec4 lit = texture(LitSampler, texCoord);
+    float shaded = DhParams.w > 0.5 ? lit.a : 1.0;
 
     float bloomLevel = Quality1.y;
     if (bloomLevel > 0.0) {
@@ -36,7 +40,8 @@ void main() {
     }
     color += texture(RaysSampler, texCoord).rgb;
 
-    color *= Look0.x;
+    // A bright modded sky (The Aether) is already near white; a little less exposure keeps it from clipping.
+    color *= Look0.x * mix(1.0, 0.85, Misc.w);
     color = softClip(color);
 
     // Contrast around mid grey, then saturation.
@@ -52,7 +57,9 @@ void main() {
         tint *= vec3(0.72, 0.93, 1.05);
     }
     color *= mix(vec3(1.0), tint, Look0.w);
+    color = mix(lit.rgb, color, shaded);
 
+    // The vignette belongs to the whole screen, Distant Horizons' terrain included.
     vec2 centered = texCoord - 0.5;
     color *= 1.0 - dot(centered, centered) * Look1.z * 1.4;
 

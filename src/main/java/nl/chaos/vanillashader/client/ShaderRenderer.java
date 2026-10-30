@@ -20,6 +20,7 @@ import nl.chaos.vanillashader.client.gpu.PostPipeline;
 import nl.chaos.vanillashader.client.gpu.PostTexture;
 import nl.chaos.vanillashader.client.gpu.TexRef;
 import nl.chaos.vanillashader.client.gpu.UniformBlock;
+import nl.chaos.vanillashader.compat.DistantHorizonsCompat;
 import nl.chaos.vanillashader.compat.IrisCompat;
 import nl.chaos.vanillashader.compat.McCompat;
 import nl.chaos.vanillashader.compat.WeatherStoryCompat;
@@ -52,10 +53,11 @@ public final class ShaderRenderer {
     private static final PostPipeline DENOISE = pipeline("denoise", "In", "Guide");
     private static final PostPipeline RT_LIGHT = pipeline("rt_light", "Depth", "Volume");
     private static final PostPipeline RT_REFLECT = pipeline("rt_reflect", "Scene", "Depth", "Volume");
-    private static final PostPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect");
+    private static final PostPipeline DH_MASK = pipeline("dh_mask", "Depth", "DhDepth");
+    private static final PostPipeline COMPOSITE = pipeline("composite", "Scene", "Depth", "OpaqueDepth", "Lighting", "PointLights", "Water", "OpaqueColor", "FeatureColor", "ShadowMap", "RtLight", "RtReflect", "DhMask");
     private static final PostPipeline BRIGHT = pipeline("bloom_bright", "In");
     private static final PostPipeline BLUR = pipeline("blur", "In");
-    private static final PostPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth");
+    private static final PostPipeline GOD_RAYS = pipeline("god_rays", "Scene", "Depth", "DhMask");
     private static final PostPipeline FINAL = pipeline("final", "Lit", "BloomNear", "BloomFar", "Rays");
     private static final PostPipeline FSR_EASU = pipeline("fsr_easu", "In");
     private static final PostPipeline FSR_RCAS = pipeline("fsr_rcas", "In");
@@ -64,24 +66,28 @@ public final class ShaderRenderer {
     private static final Texture LIGHTING_TEX = new Texture("lighting", 2);
     private static final Texture POINT_LIGHTS_TEX = new Texture("point_lights", 2);
     private static final Texture WATER_TEX = new Texture("water", 2);
+    private static final Texture WATER_TMP = new Texture("water_tmp", 2);
     private static final Texture LIGHTING_TMP = new Texture("lighting_tmp", 2);
     private static final Texture POINT_LIGHTS_TMP = new Texture("point_lights_tmp", 2);
     private static final Texture RAYS_TMP = new Texture("rays_tmp", 2);
     private static final Texture RT_LIGHT_TEX = new Texture("rt_light", 2);
     private static final Texture RT_LIGHT_TMP = new Texture("rt_light_tmp", 2);
     private static final Texture RT_REFLECT_TEX = new Texture("rt_reflect", 2);
-    private static final Texture RAYS = new Texture("rays", 2);
+    private static final Texture RT_REFLECT_TMP = new Texture("rt_reflect_tmp", 2);
+    private static final Texture RAYS =new Texture("rays", 2);
     private static final Texture BLOOM_NEAR = new Texture("bloom_near", 4);
     private static final Texture BLOOM_NEAR_TMP = new Texture("bloom_near_tmp", 4);
     private static final Texture BLOOM_FAR = new Texture("bloom_far", 8);
     private static final Texture BLOOM_FAR_TMP = new Texture("bloom_far_tmp", 8);
     private static final Texture BLACK = new Texture("black", 0);
+    // Where Distant Horizons drew terrain that the level's own depth shows as sky (see dh_mask.fsh).
+    private static final Texture DH_MASK_TEX = new Texture("dh_mask", 1);
     private static final PostTexture UPSCALED = new PostTexture("fsr_upscaled");
     // The level after opaque geometry and after translucent features: their difference shows WeatherStory's mist
     // and sand wisps (drawn without depth), so lighting can be kept off the veil in front of the terrain.
     private static final PostTexture OPAQUE_COLOR = new PostTexture("opaque_color");
     private static final PostTexture FEATURE_COLOR = new PostTexture("feature_color");
-    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RT_LIGHT_TEX, RT_LIGHT_TMP, RT_REFLECT_TEX, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK);
+    private static final List<Texture> TEXTURES = List.of(LIT, LIGHTING_TEX, POINT_LIGHTS_TEX, WATER_TEX, WATER_TMP, LIGHTING_TMP, POINT_LIGHTS_TMP, RAYS_TMP, RT_LIGHT_TEX, RT_LIGHT_TMP, RT_REFLECT_TEX, RT_REFLECT_TMP, RAYS, BLOOM_NEAR, BLOOM_NEAR_TMP, BLOOM_FAR, BLOOM_FAR_TMP, BLACK, DH_MASK_TEX);
     private static final DepthTexture OPAQUE_DEPTH = new DepthTexture("opaque_depth");
     private static final DepthTexture FULL_DEPTH = new DepthTexture("full_depth");
     //? if >=26.3 {
@@ -98,6 +104,9 @@ public final class ShaderRenderer {
     // Denoise directions that leave the packed distances in BA untouched (the plain blur ones blur all channels).
     private static @Nullable UniformBlock denoiseHorizontalKeep;
     private static @Nullable UniformBlock denoiseVerticalKeep;
+    // Denoise directions that only average texels with a reflection (A > 0), so it does not bleed onto other surfaces.
+    private static @Nullable UniformBlock denoiseHorizontalMasked;
+    private static @Nullable UniformBlock denoiseVerticalMasked;
     private static @Nullable UniformBlock fsrConfig;
     private static int fsrSharpness = -1;
     //? if >=26.1
@@ -107,6 +116,8 @@ public final class ShaderRenderer {
     private static boolean opaqueColorCaptured;
     private static boolean featureColorCaptured;
     private static boolean failed;
+    // Counts our frames, so Distant Horizons' data can be matched to the frame it was drawn in.
+    private static long frameIndex;
     private static final Set<String> BROKEN = new HashSet<>();
 
     private ShaderRenderer() {
@@ -122,6 +133,7 @@ public final class ShaderRenderer {
         //?} else
         /*NeoForge.EVENT_BUS.addListener(ShaderRenderer::onRenderStage);*/
         RenderScaler.init();
+        AutoQuality.init();
     }
 
     /** Called from the GameRenderer mixin with the projection the level is drawn with this frame. */
@@ -317,6 +329,12 @@ public final class ShaderRenderer {
             cloudShadow = null;
         }
         FRAME.update(minecraft, effects, width, height, opaqueCaptured, Gpu.isZZeroToOne(), SHADOW_MAP.minY(), SHADOW_MAP.maxTerrainY(), cloudRange);
+        DistantHorizonsCompat.Frame distant = DistantHorizonsCompat.frame(frameIndex++);
+        // The composite carries what the final pass needs to know about DH (in its alpha); without it, no DH handling.
+        if (distant != null && (!usable(DH_MASK) || !usable(COMPOSITE))) {
+            distant = null;
+        }
+        FRAME.setDistantHorizons(distant, minecraft.options.getEffectiveRenderDistance() * 16.0F, ShaderConfig.DISTANT_HORIZONS_SHADING.get());
         UniformBlock frame = frameUniforms();
         frame.write(data -> FRAME.write(Std140.into(data)));
         ensureBlurConfigs();
@@ -334,6 +352,15 @@ public final class ShaderRenderer {
         TexRef scene = TexRef.color(main);
         TexRef heights = (effects.shadows() > 0 || effects.reflections() > 0) && SHADOW_MAP.ref() != null ? SHADOW_MAP.ref() : BLACK.ref();
 
+        // Distant Horizons' terrain shows as sky in the level's depth; this marks it, so our effects leave it alone.
+        TexRef distantMask = BLACK.ref();
+        if (distant != null) {
+            draw(DH_MASK, DH_MASK_TEX, frame, null,
+                new Input("Depth", fullDepth, false),
+                new Input("DhDepth", distant.depth(), false));
+            distantMask = DH_MASK_TEX.ref();
+        }
+
         // Every pass checks that its shader compiled on this GPU; a broken one only loses its own effect.
         if (usable(LIGHTING)) {
             draw(LIGHTING, LIGHTING_TEX, frame, null,
@@ -346,14 +373,14 @@ public final class ShaderRenderer {
         }
         boolean denoise = usable(DENOISE) && (effects.ambientOcclusion() > 0 || effects.shadows() > 0);
         if (denoise && usable(LIGHTING)) {
-            denoise(LIGHTING_TEX, LIGHTING_TMP, LIGHTING_TEX, true);
+            denoise(LIGHTING_TEX, LIGHTING_TMP, LIGHTING_TEX, Denoise.KEEP_DISTANCES);
         }
         if (FRAME.anyPointLights() && usable(POINT_LIGHTS)) {
             draw(POINT_LIGHTS, POINT_LIGHTS_TEX, frame, null,
                 new Input("Depth", fullDepth, false),
                 new Input("ShadowMap", heights, false));
             if (usable(DENOISE)) {
-                denoise(POINT_LIGHTS_TEX, POINT_LIGHTS_TMP, LIGHTING_TEX, false);
+                denoise(POINT_LIGHTS_TEX, POINT_LIGHTS_TMP, LIGHTING_TEX, Denoise.ALL);
             }
         } else {
             POINT_LIGHTS_TEX.texture.clear(0);
@@ -364,13 +391,17 @@ public final class ShaderRenderer {
                 new Input("Depth", fullDepth, false),
                 new Input("OpaqueDepth", opaqueDepth, false),
                 new Input("ShadowMap", heights, false));
+            // The reflection march hits or misses per pixel far away, which shows as sparkles on distant water.
+            if (usable(DENOISE)) {
+                denoise(WATER_TEX, WATER_TMP, LIGHTING_TEX, Denoise.MASKED);
+            }
         } else {
             WATER_TEX.texture.clear(0);
         }
 
         // Ray-traced lighting: rays through a voxel copy of the nearby blocks for light from emissive blocks and
         // reflections on glossy ones.
-        boolean tracing = ShaderConfig.RAY_TRACING.get();
+        boolean tracing = ShaderConfig.rayTracing();
         if (tracing) {
             long start = System.nanoTime();
             VOLUME.update(minecraft.level, McCompat.cameraPosition());
@@ -382,7 +413,7 @@ public final class ShaderRenderer {
                 new Input("Depth", fullDepth, false),
                 new Input("Volume", volume, false));
             if (usable(DENOISE)) {
-                denoise(RT_LIGHT_TEX, RT_LIGHT_TMP, LIGHTING_TEX, false);
+                denoise(RT_LIGHT_TEX, RT_LIGHT_TMP, LIGHTING_TEX, Denoise.ALL);
             }
         } else {
             RT_LIGHT_TEX.texture.clear(0);
@@ -392,6 +423,12 @@ public final class ShaderRenderer {
                 new Input("Scene", scene, true),
                 new Input("Depth", fullDepth, false),
                 new Input("Volume", volume, false));
+            // One jittered ray per pixel: without this the glossy blocks are covered in bright dots. Twice, since
+            // a hit on a light source or the sky next to a miss differs far more than the occlusion jitter does.
+            if (usable(DENOISE)) {
+                denoise(RT_REFLECT_TEX, RT_REFLECT_TMP, LIGHTING_TEX, Denoise.MASKED);
+                denoise(RT_REFLECT_TEX, RT_REFLECT_TMP, LIGHTING_TEX, Denoise.MASKED);
+            }
         } else {
             RT_REFLECT_TEX.texture.clear(0);
         }
@@ -409,7 +446,8 @@ public final class ShaderRenderer {
                 new Input("FeatureColor", featureColorCaptured ? FEATURE_COLOR.ref() : scene, false),
                 new Input("ShadowMap", heights, false),
                 new Input("RtLight", RT_LIGHT_TEX.ref(), false),
-                new Input("RtReflect", RT_REFLECT_TEX.ref(), true));
+                new Input("RtReflect", RT_REFLECT_TEX.ref(), true),
+                new Input("DhMask", distantMask, false));
         } else {
             // Bloom, god rays and grading still work on the plain level.
             LIT.texture.copyColorFrom(main);
@@ -432,7 +470,8 @@ public final class ShaderRenderer {
         if (effects.godRays() > 0 && FRAME.sunOnScreen() && usable(GOD_RAYS)) {
             draw(GOD_RAYS, RAYS, frame, null,
                 new Input("Scene", scene, true),
-                new Input("Depth", fullDepth, false));
+                new Input("Depth", fullDepth, false),
+                new Input("DhMask", distantMask, false));
             // The rays march with per-pixel jitter; a light blur hides the grain.
             if (usable(BLUR)) {
                 blur(RAYS, RAYS_TMP, 1);
@@ -514,10 +553,21 @@ public final class ShaderRenderer {
         return fsrConfig;
     }
 
+    /** What the denoise blurs: every channel, only RG (BA hold the distances), or only texels with A > 0. */
+    private enum Denoise { ALL, KEEP_DISTANCES, MASKED }
+
     // Depth-aware blur, horizontal into temp then vertical back; distances for the edge test come from the guide.
-    private static void denoise(Texture target, Texture temp, Texture guide, boolean keepDistances) {
-        UniformBlock horizontal = keepDistances ? denoiseHorizontalKeep : blurHorizontal;
-        UniformBlock vertical = keepDistances ? denoiseVerticalKeep : blurVertical;
+    private static void denoise(Texture target, Texture temp, Texture guide, Denoise mode) {
+        UniformBlock horizontal = switch (mode) {
+            case ALL -> blurHorizontal;
+            case KEEP_DISTANCES -> denoiseHorizontalKeep;
+            case MASKED -> denoiseHorizontalMasked;
+        };
+        UniformBlock vertical = switch (mode) {
+            case ALL -> blurVertical;
+            case KEEP_DISTANCES -> denoiseVerticalKeep;
+            case MASKED -> denoiseVerticalMasked;
+        };
         // When the guide is the target itself, the temp copy carries the (unchanged) distances for the second pass.
         Texture secondGuide = guide == target ? temp : guide;
         drawWith(DENOISE, temp, "DenoiseConfig", horizontal, new Input("In", target.ref(), false), new Input("Guide", guide.ref(), false));
@@ -558,6 +608,8 @@ public final class ShaderRenderer {
             blurVertical = blurConfig(0.0F, 1.0F, 0.0F);
             denoiseHorizontalKeep = blurConfig(1.0F, 0.0F, 1.0F);
             denoiseVerticalKeep = blurConfig(0.0F, 1.0F, 1.0F);
+            denoiseHorizontalMasked = blurConfig(1.0F, 0.0F, 2.0F);
+            denoiseVerticalMasked = blurConfig(0.0F, 1.0F, 2.0F);
         }
     }
 

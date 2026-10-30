@@ -3,6 +3,7 @@ package nl.chaos.vanillashader.compat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.phys.Vec3;
 import nl.chaos.vanillashader.mixin.MainTargetAccessor;
 import org.jspecify.annotations.Nullable;
@@ -25,6 +26,23 @@ public final class McCompat {
         /*((MainTargetAccessor) Minecraft.getInstance().gameRenderer).vanillashader$setMainRenderTarget(target);
         *///?} else
         ((MainTargetAccessor) Minecraft.getInstance()).vanillashader$setMainRenderTarget(target);
+    }
+
+    /** The open screen (menu, inventory, chat, ...), null while playing. */
+    public static @Nullable Screen screen() {
+        //? if >=26.2 {
+        /*return Minecraft.getInstance().gui.screen();
+        *///?} else
+        return Minecraft.getInstance().screen;
+    }
+
+    /** The refresh rate of the monitor the window is on, or 0 when unknown. */
+    public static int refreshRate() {
+        //? if >=26.3 {
+        /*com.mojang.blaze3d.platform.VideoMode mode = Minecraft.getInstance().getWindow().getActiveVideoMode();
+        return mode == null ? 0 : Math.round(mode.getRefreshRate());
+        *///?} else
+        return Minecraft.getInstance().getWindow().getRefreshRate();
     }
 
     public static @Nullable Camera camera() {

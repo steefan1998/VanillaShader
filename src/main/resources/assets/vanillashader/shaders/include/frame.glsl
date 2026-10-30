@@ -21,8 +21,14 @@ layout(std140) uniform Frame {
     vec4 Flashes[4];    // lightning: position relative to the camera, w = brightness (0 = none)
     vec4 DynLightPos[32];   // held, dropped and placed light sources: position relative to the camera, w = radius in blocks
     vec4 DynLightColor[32]; // rgb, w = intensity (0 = unused)
-    vec4 Misc;          // x = highest terrain top around the camera, y = number of point lights
+    vec4 Misc;          // x = highest terrain top around the camera, y = number of point lights, z = wetness from rain (0..1),
+                        // w = bright modded sky (0..1, e.g. The Aether): less haze, bloom and exposure
     vec4 RayTracing;    // x = on, y = rays per pixel, z = ray length in blocks
+    vec4 DhParams;      // Distant Horizons: its ndc z = depth * x + y, z = reversed Z, w = 0 when it did not draw this
+                        // frame, 1 when its terrain is left alone, 2 when our effects shade it too
+    vec4 Misc2;         // x = rainbow strength (0 = none), y/z = with Distant Horizons: horizontal distance where the
+                        // chunks hand over to DH's terrain, w = cloud height (world Y)
+    mat4 InvDhProj;     // Distant Horizons' inverse projection
 };
 
 vec3 viewPosFromDepth(vec2 uv, float depth) {

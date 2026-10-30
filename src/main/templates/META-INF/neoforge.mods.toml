@@ -38,6 +38,13 @@ ordering = "AFTER"
 side = "CLIENT"
 
 [[dependencies.${mod_id}]]
+modId = "distanthorizons"
+type = "optional"
+versionRange = "[3.3,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.${mod_id}]]
 modId = "sodium"
 type = "optional"
 versionRange = "*"

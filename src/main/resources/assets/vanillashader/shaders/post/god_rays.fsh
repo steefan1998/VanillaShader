@@ -5,6 +5,7 @@
 
 uniform sampler2D SceneSampler;
 uniform sampler2D DepthSampler;
+uniform sampler2D DhMaskSampler; // A = 1 where Distant Horizons' far terrain blocks the sky
 
 in vec2 texCoord;
 
@@ -21,7 +22,7 @@ void main() {
     float lightSum = 0.0;
     for (int i = 0; i < samples; i++) {
         float depth = texture(DepthSampler, pos).r;
-        if (isSky(depth)) {
+        if (isSky(depth) && texture(DhMaskSampler, pos).a < 0.5) {
             float brightness = luma(texture(SceneSampler, pos).rgb);
             lightSum += (0.25 + smoothstep(0.45, 1.0, brightness)) * decay;
         }
