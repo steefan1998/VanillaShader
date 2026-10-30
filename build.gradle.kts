@@ -37,6 +37,10 @@ neoForge {
                 systemProperty("vanillashader.devCapture", "true")
                 systemProperty("vanillashader.devCapture.commands", devCapture.toString())
                 programArguments.addAll("--quickPlaySingleplayer", "world")
+                // -PwindowSize=1920x1080 opens the window at that size, for screenshots bigger than the default 854x480.
+                findProperty("windowSize")?.toString()?.split("x")?.let { (width, height) ->
+                    programArguments.addAll("--width", width, "--height", height)
+                }
                 // -Pjvm.some.property=value becomes -Dsome.property=value, e.g. to force WeatherStory's cloud preview
                 jvmProperties.forEach { (key, value) -> systemProperty(key.substring(4), value.toString()) }
             }

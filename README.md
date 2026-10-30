@@ -20,6 +20,23 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
 |---|---|
 | ![Forest with sun shadows](docs/screenshots/forest.jpg) | ![Soft mist from WeatherStory](docs/screenshots/fog.jpg) |
 
+### New in 1.2
+
+These shots use the Max profile with Sodium and Distant Horizons on Minecraft 1.21.1.
+
+| Vanilla with Distant Horizons | Vanilla Shader (Max) |
+|---|---|
+| ![Valley at golden hour, vanilla with Distant Horizons](docs/screenshots/golden-valley-vanilla.jpg) | ![Valley at golden hour: Distant Horizons terrain in the sunset haze](docs/screenshots/golden-valley.jpg) |
+| ![Islands under a clear sky, vanilla](docs/screenshots/islands-vanilla.jpg) | ![Islands under a blue sky, with Distant Horizons terrain on the horizon](docs/screenshots/islands.jpg) |
+
+| Afterglow after sunset | Rainbow after the rain |
+|---|---|
+| ![Red afterglow over the valley after sunset](docs/screenshots/afterglow.jpg) | ![Rainbow over the valley](docs/screenshots/rainbow.jpg) |
+
+| Rain: wet ground and puddles | Ray-traced reflections on iron, gold and glass |
+|---|---|
+| ![Rain making the ground wet with puddles reflecting the sky](docs/screenshots/rain.jpg) | ![Iron, gold and glass blocks by a pond with ray-traced reflections](docs/screenshots/reflections.jpg) |
+
 ## Features
 
 - **Graphics profiles:** Off, Low, Medium, High, Max, Auto and Custom. Press **F6** to cycle them in game.
