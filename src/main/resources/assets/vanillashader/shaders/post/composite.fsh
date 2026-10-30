@@ -203,7 +203,7 @@ void main() {
         // The farther, the more block faces share a pixel and the less its facing means, until at the far edge, seen
         // almost edge-on, it is no better than noise: the lighting fades out, so pixels do not flicker between sun
         // and shade.
-        float grazing = smoothstep(300.0, 1600.0, dist);
+        float grazing = smoothstep(300.0, 1000.0, dist);
         strength *= 1.0 - grazing;
         if (Quality1.x > 0.0 && strength > 0.01) {
             float visibility = smoothstep(0.25, 0.85, distantMask.b);
@@ -219,7 +219,8 @@ void main() {
         // Told by height and colour only, which hold still; the facing from the depth buffer shifts a little from frame
         // to frame and made distant water flicker in and out. A degree of "water", not a yes or no.
         float height = viewToWorld(position).y + CameraPos.y;
-        float lodWater = smoothstep(60.5, 61.5, height) * (1.0 - smoothstep(64.0, 65.0, height))
+        // No reflections on the farthest water: they add little there and kept the far corner flickering.
+        float lodWater = smoothstep(60.5, 61.5, height) * (1.0 - smoothstep(300.0, 800.0, dist)) * (1.0 - smoothstep(64.0, 65.0, height))
             * smoothstep(1.02, 1.15, color.b / max(color.r, 1e-3)) * smoothstep(0.9, 1.0, color.b / max(color.g, 1e-3));
         if (Quality0.y >= 0.0 && lodWater > 0.001) {
             vec3 reflected = reflect(viewDir, viewUp());
