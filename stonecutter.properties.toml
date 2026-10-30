@@ -1,6 +1,6 @@
 mod.id = "vanillashader"
 mod.name = "Vanilla Shader"
-mod.version = "1.2.4"
+mod.version = "1.2.5"
 mod.group = "nl.chaos.vanillashader"
 mod.authors = "Stefan / Claude Code"
 mod.description = "Vibrant-style visuals (bloom, god rays, water reflections, color grading) with Low/Medium/High/Max quality profiles."

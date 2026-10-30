@@ -72,8 +72,8 @@ void main() {
     }
     // Far away a pixel covers bits of several block faces, and DH's depth shifts by a hair from frame to frame, so a
     // normal from the nearest neighbours alone flips between top and side: the shading would flicker. Two estimates,
-    // one and three pixels out, averaged, keep it steady.
-    vec3 n = lodNormal(position, 1.0) + lodNormal(position, 3.0);
+    // two and six pixels out, averaged, keep it steady.
+    vec3 n = lodNormal(position, 2.0) + lodNormal(position, 6.0);
     float lengthSq = dot(n, n);
     // Single-pixel LODs (no neighbours) count as flat ground.
     n = lengthSq > 1e-12 ? n * inversesqrt(lengthSq) : viewUp();
