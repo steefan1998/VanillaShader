@@ -200,23 +200,26 @@ void main() {
         // reach it. It is lit from its own facing instead (dh_mask.fsh): the sunny side warm, the far side in the
         // cool shade of the sky, a little softer than near terrain since DH already shades its faces.
         float strength = LightDir.w * (1.0 - Weather.y * 0.6) * Quality1.w * smoothstep(24.0, 160.0, Quality1.z) * (1.0 - fog);
-        // The farther, the more block faces share a pixel and the less its facing means: the lighting softens there,
-        // so a pixel tipping between faces does not flicker between sun and shade.
-        strength *= mix(1.0, 0.4, smoothstep(256.0, 1024.0, dist));
+        // The farther, the more block faces share a pixel and the less its facing means, until at the far edge, seen
+        // almost edge-on, it is no better than noise: the lighting fades out, so pixels do not flicker between sun
+        // and shade.
+        float grazing = smoothstep(300.0, 1600.0, dist);
+        strength *= 1.0 - grazing;
         if (Quality1.x > 0.0 && strength > 0.01) {
             float visibility = smoothstep(0.35, 0.75, distantMask.b);
             vec3 shade = vec3(0.52, 0.58, 0.72);
             vec3 sunlit = vec3(1.0) + (LightColor.rgb - 0.85) * mix(0.15, 0.5, Weather.z);
             color *= mix(vec3(1.0), mix(shade, sunlit, visibility), strength * 0.6);
         }
-        // Rain soaks DH's terrain too, its tops most.
+        // Rain soaks DH's terrain too, its tops most (evenly where the facing is noise).
         float up = clamp((distantMask.a - 0.6) / 0.4, 0.0, 1.0);
-        color *= mix(1.0, 0.8, Misc.z * mix(0.45, 1.0, up) * (1.0 - fog));
+        color *= mix(1.0, 0.8, Misc.z * mix(mix(0.45, 1.0, up), 0.7, grazing) * (1.0 - fog));
         // DH does not say which LODs are water; seas and lakes at sea level are flat, level with it and blue. They
         // reflect the sky and the sun like near water (without the screen-space part, which does not reach that far).
         // A degree of "water", not a yes or no, so pixels near the limits do not flicker in and out of it.
         float height = viewToWorld(position).y + CameraPos.y;
-        float lodWater = smoothstep(0.93, 0.98, up) * smoothstep(60.5, 61.5, height) * (1.0 - smoothstep(64.0, 65.0, height))
+        // Far away the facing is noise (see above); there height and colour alone decide.
+        float lodWater = smoothstep(0.93, 0.98, max(up, grazing)) * smoothstep(60.5, 61.5, height) * (1.0 - smoothstep(64.0, 65.0, height))
             * smoothstep(1.02, 1.15, color.b / max(color.r, 1e-3)) * smoothstep(0.9, 1.0, color.b / max(color.g, 1e-3));
         if (Quality0.y >= 0.0 && lodWater > 0.001) {
             vec3 reflected = reflect(viewDir, viewUp());
