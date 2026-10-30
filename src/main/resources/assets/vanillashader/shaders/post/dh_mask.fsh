@@ -43,6 +43,17 @@ vec3 lodNeighbour(vec3 center, vec2 offset) {
     return abs(a.z) < abs(b.z) ? a : b;
 }
 
+// The surface normal from the neighbours `pixels` away, facing the camera; zero without neighbours.
+vec3 lodNormal(vec3 position, float pixels) {
+    vec3 n = cross(lodNeighbour(position, vec2(ScreenSize.z * pixels, 0.0)), lodNeighbour(position, vec2(0.0, ScreenSize.w * pixels)));
+    float lengthSq = dot(n, n);
+    if (lengthSq <= 1e-12) {
+        return vec3(0.0);
+    }
+    n *= inversesqrt(lengthSq);
+    return dot(n, position) > 0.0 ? -n : n;
+}
+
 void main() {
     fragColor = vec4(0.0);
     if (!isSky(texture(DepthSampler, texCoord).r)) {
@@ -59,15 +70,13 @@ void main() {
         fragColor = vec4(0.0, 0.0, 0.0, 0.25);
         return;
     }
-    vec3 dx = lodNeighbour(position, vec2(ScreenSize.z, 0.0));
-    vec3 dy = lodNeighbour(position, vec2(0.0, ScreenSize.w));
-    vec3 n = cross(dx, dy);
+    // Far away a pixel covers bits of several block faces, and DH's depth shifts by a hair from frame to frame, so a
+    // normal from the nearest neighbours alone flips between top and side: the shading would flicker. Two estimates,
+    // one and three pixels out, averaged, keep it steady.
+    vec3 n = lodNormal(position, 1.0) + lodNormal(position, 3.0);
     float lengthSq = dot(n, n);
     // Single-pixel LODs (no neighbours) count as flat ground.
     n = lengthSq > 1e-12 ? n * inversesqrt(lengthSq) : viewUp();
-    if (dot(n, position) > 0.0) {
-        n = -n;
-    }
     float sunFacing = dot(n, LightDir.xyz) * 0.5 + 0.5;
     float up = clamp(viewToWorld(n).y, 0.0, 1.0);
     fragColor = finiteOr(vec4(packFarDistance(length(position)), sunFacing, 0.6 + 0.4 * up), vec4(0.0));

@@ -58,7 +58,7 @@ All shots use the Max profile together with Sodium and WeatherStory; "vanilla" i
   - a switch in the settings turns DH's drawing off and on (DH's own settings are left alone), and at game start a
     prompt asks whether to use DH this time (with "don't show again").
 - **AMD FSR 1 upscaling:** a render scale per profile and a sharpness slider. The HUD always stays sharp.
-- **Settings:** in Sodium's Video Settings (a "Vanilla Shader" page) or in NeoForge's config screen. The Look page has a reset button.
+- **Settings:** in Sodium's Video Settings (a "Vanilla Shader" page), or without Sodium through a "Vanilla Shader..." button in Minecraft's own Video Settings, and in NeoForge's config screen. The Look page has a reset button.
 - **Languages:** English, Dutch, German, French, Spanish, Brazilian Portuguese, Italian, Polish, Russian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese and Korean.
 
 ## Requirements

@@ -18,6 +18,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import nl.chaos.vanillashader.client.DevCapture;
 import nl.chaos.vanillashader.client.DistantHorizonsPrompt;
 import nl.chaos.vanillashader.client.ShaderRenderer;
+import nl.chaos.vanillashader.client.VideoSettingsButton;
 import nl.chaos.vanillashader.compat.DistantHorizonsCompat;
 import nl.chaos.vanillashader.config.Profile;
 import nl.chaos.vanillashader.config.ShaderConfig;
@@ -42,6 +43,7 @@ public final class VanillaShader {
         NeoForge.EVENT_BUS.addListener(VanillaShader::clientTick);
         ShaderRenderer.init();
         DistantHorizonsCompat.init();
+        VideoSettingsButton.init();
         DevCapture.init();
     }
 

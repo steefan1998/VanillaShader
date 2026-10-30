@@ -200,8 +200,11 @@ void main() {
         // reach it. It is lit from its own facing instead (dh_mask.fsh): the sunny side warm, the far side in the
         // cool shade of the sky, a little softer than near terrain since DH already shades its faces.
         float strength = LightDir.w * (1.0 - Weather.y * 0.6) * Quality1.w * smoothstep(24.0, 160.0, Quality1.z) * (1.0 - fog);
+        // The farther, the more block faces share a pixel and the less its facing means: the lighting softens there,
+        // so a pixel tipping between faces does not flicker between sun and shade.
+        strength *= mix(1.0, 0.4, smoothstep(256.0, 1024.0, dist));
         if (Quality1.x > 0.0 && strength > 0.01) {
-            float visibility = smoothstep(0.45, 0.65, distantMask.b);
+            float visibility = smoothstep(0.35, 0.75, distantMask.b);
             vec3 shade = vec3(0.52, 0.58, 0.72);
             vec3 sunlit = vec3(1.0) + (LightColor.rgb - 0.85) * mix(0.15, 0.5, Weather.z);
             color *= mix(vec3(1.0), mix(shade, sunlit, visibility), strength * 0.6);
@@ -211,15 +214,18 @@ void main() {
         color *= mix(1.0, 0.8, Misc.z * mix(0.45, 1.0, up) * (1.0 - fog));
         // DH does not say which LODs are water; seas and lakes at sea level are flat, level with it and blue. They
         // reflect the sky and the sun like near water (without the screen-space part, which does not reach that far).
+        // A degree of "water", not a yes or no, so pixels near the limits do not flicker in and out of it.
         float height = viewToWorld(position).y + CameraPos.y;
-        if (Quality0.y >= 0.0 && up > 0.97 && height > 61.0 && height < 64.5 && color.b > color.r * 1.1 && color.b > color.g * 0.95) {
+        float lodWater = smoothstep(0.93, 0.98, up) * smoothstep(60.5, 61.5, height) * (1.0 - smoothstep(64.0, 65.0, height))
+            * smoothstep(1.02, 1.15, color.b / max(color.r, 1e-3)) * smoothstep(0.9, 1.0, color.b / max(color.g, 1e-3));
+        if (Quality0.y >= 0.0 && lodWater > 0.001) {
             vec3 reflected = reflect(viewDir, viewUp());
             float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(-viewDir, viewUp()), 0.0), 5.0);
-            float blend = clamp(mix(0.12, 1.0, fresnel) * Look1.y, 0.0, 0.92) * (1.0 - fog);
+            float blend = clamp(mix(0.12, 1.0, fresnel) * Look1.y, 0.0, 0.92) * (1.0 - fog) * lodWater;
             float towardSun = max(dot(reflected, LightDir.xyz), 0.0);
             float glint = pow(towardSun, 90.0) * 0.9 + pow(towardSun, 60.0) * 0.25;
-            color = mix(color * mix(1.0, 0.72, Look1.y), skyRadiance(reflected), blend)
-                + LightColor.rgb * LightColor.w * glint * Look1.y * HorizonColor.w * (1.0 - fog);
+            color = mix(color * mix(1.0, 0.72, Look1.y * lodWater), skyRadiance(reflected), blend)
+                + LightColor.rgb * LightColor.w * glint * Look1.y * HorizonColor.w * (1.0 - fog) * lodWater;
         }
     } else if (water.a > 0.002 && position.z - opaque.z > 0.02) {
         vec3 deep = color * mix(1.0, 0.72, Look1.y);
